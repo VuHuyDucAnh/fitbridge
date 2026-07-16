@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Bicep Curl Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --primary: #00ff88;
+            --bg-glass: rgba(15, 23, 42, 0.7);
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1280px;
+            aspect-ratio: 16/9;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .input_video {
+            display: none; 
+        }
+
+        .output_canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none; 
+        }
+
+        .counter-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 40px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 150px;
+        }
+
+        .counter-card h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .counter-card .count {
+            font-size: 4rem;
+            font-weight: bold;
+            color: var(--primary);
+            margin: 10px 0;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .counter-card .stage {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            background: var(--bg-glass);
+            padding: 20px 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas" width="1280" height="720"></canvas>
+        
+        <div class="loading" id="loadingText">Loading AI Model & Camera...</div>
+
+        <div class="ui-panel">
+            <div class="counter-card">
+                <h2>Left Arm</h2>
+                <div class="count" id="leftCount">0</div>
+                <div class="stage" id="leftStage">WAITING</div>
+            </div>
+            <div class="counter-card">
+                <h2>Right Arm</h2>
+                <div class="count" id="rightCount">0</div>
+                <div class="stage" id="rightStage">WAITING</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.querySelector('.input_video');
+        const canvasElement = document.querySelector('.output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingText = document.getElementById('loadingText');
+        let leftCounter = 0;
+        let leftStage = 'down';
+        let rightCounter = 0;
+        let rightStage = 'down';
+        function calculateAngle(a, b, c) {
+            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            
+            if (angle > 180.0) {
+                angle = 360.0 - angle;
+            }
+            return angle;
+        }
+
+function onResults(results) {
+
+    if(loadingText.style.display !== 'none') {
+        loadingText.style.display = 'none';
+    }
+
+    canvasCtx.setTransform(1, 0, 0, 1, 0, 0); 
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+    if (results.poseLandmarks) {
+
+        drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: 'rgba(255,255,255,0.4)', lineWidth: 2});
+        drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#00ff88', lineWidth: 1, radius: 3});
+
+        const lShoulder = results.poseLandmarks[11];
+        const lElbow = results.poseLandmarks[13];
+        const lWrist = results.poseLandmarks[15];
+
+        if (lShoulder.visibility > 0.5 && lElbow.visibility > 0.5 && lWrist.visibility > 0.5) {
+            const lAngle = calculateAngle(lShoulder, lElbow, lWrist);
+            
+
+            if (lAngle > 150) leftStage = 'DOWN';
+            if (lAngle < 40 && leftStage === 'DOWN') {
+                leftStage = 'UP';
+                leftCounter += 1;
+                document.getElementById('leftCount').innerText = leftCounter;
+            }
+            document.getElementById('leftStage').innerText = leftStage;
+
+            canvasCtx.save();
+            canvasCtx.translate(lElbow.x * canvasElement.width + 30, lElbow.y * canvasElement.height);
+            canvasCtx.scale(-1, 1);
+            canvasCtx.font = '30px Arial';
+            canvasCtx.fillStyle = leftStage === 'UP' ? '#00ff88' : '#ffffff';
+            canvasCtx.fillText(Math.round(lAngle) + '°', 0, 0);
+            canvasCtx.restore();
+        }
+
+
+        const rShoulder = results.poseLandmarks[12];
+        const rElbow = results.poseLandmarks[14];
+        const rWrist = results.poseLandmarks[16];
+
+        if (rShoulder.visibility > 0.5 && rElbow.visibility > 0.5 && rWrist.visibility > 0.5) {
+            const rAngle = calculateAngle(rShoulder, rElbow, rWrist);
+
+            if (rAngle > 150) rightStage = 'DOWN';
+            if (rAngle < 40 && rightStage === 'DOWN') {
+                rightStage = 'UP';
+                rightCounter += 1;
+                document.getElementById('rightCount').innerText = rightCounter;
+            }
+            document.getElementById('rightStage').innerText = rightStage;
+
+  
+            canvasCtx.save();
+            canvasCtx.translate(rElbow.x * canvasElement.width - 30, rElbow.y * canvasElement.height);
+            canvasCtx.scale(-1, 1);
+            canvasCtx.font = '30px Arial';
+            canvasCtx.fillStyle = rightStage === 'UP' ? '#00ff88' : '#ffffff';
+            canvasCtx.fillText(Math.round(rAngle) + '°', 0, 0);
+            canvasCtx.restore();
+        }
+    }
+}
+
+        const pose = new Pose({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }});
+
+        pose.setOptions({
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+
+        pose.onResults(onResults);
+
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        camera.start();
+    </script>
+</body>
+</html>

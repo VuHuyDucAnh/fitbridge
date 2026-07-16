@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Squat Tracker</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --primary: #00ff88;
+            --bg-glass: rgba(15, 23, 42, 0.7);
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1280px;
+            aspect-ratio: 16/9;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .input_video {
+            display: none; 
+        }
+
+        .output_canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            pointer-events: none; 
+        }
+
+        .counter-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 60px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 200px;
+        }
+
+        .counter-card h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .counter-card .count {
+            font-size: 4.5rem;
+            font-weight: bold;
+            color: var(--primary);
+            margin: 10px 0;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .counter-card .stage {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 1px;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            background: var(--bg-glass);
+            padding: 20px 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas" width="1280" height="720"></canvas>
+        
+        <div class="loading" id="loadingText">Loading AI Model & Camera...</div>
+
+        <div class="ui-panel">
+            <div class="counter-card">
+                <h2>Total Squats</h2>
+                <div class="count" id="squatCount">0</div>
+                <div class="stage" id="squatStage">WAITING</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.querySelector('.input_video');
+        const canvasElement = document.querySelector('.output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingText = document.getElementById('loadingText');
+
+        let squatCounter = 0;
+        let squatStage = 'UP';
+
+        function calculateAngle(a, b, c) {
+            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            
+            if (angle > 180.0) {
+                angle = 360.0 - angle;
+            }
+            return angle;
+        }
+
+        function onResults(results) {
+            if(loadingText.style.display !== 'none') {
+                loadingText.style.display = 'none';
+            }
+
+            canvasCtx.setTransform(1, 0, 0, 1, 0, 0); 
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.poseLandmarks) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: 'rgba(255,255,255,0.4)', lineWidth: 2});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#00ff88', lineWidth: 1, radius: 3});
+
+                const lHip = results.poseLandmarks[23];
+                const lKnee = results.poseLandmarks[25];
+                const lAnkle = results.poseLandmarks[27];
+                const rHip = results.poseLandmarks[24];
+                const rKnee = results.poseLandmarks[26];
+                const rAnkle = results.poseLandmarks[28];
+
+                let legAngle = 0;
+                let activeKnee = lKnee;
+
+                if (lHip.visibility > 0.5 && rHip.visibility > 0.5) {
+                    const lAngle = calculateAngle(lHip, lKnee, lAnkle);
+                    const rAngle = calculateAngle(rHip, rKnee, rAnkle);
+                    legAngle = (lAngle + rAngle) / 2;
+                } else if (lHip.visibility > 0.5) {
+                    legAngle = calculateAngle(lHip, lKnee, lAnkle);
+                    activeKnee = lKnee;
+                } else if (rHip.visibility > 0.5) {
+                    legAngle = calculateAngle(rHip, rKnee, rAnkle);
+                    activeKnee = rKnee;
+                }
+
+                if (legAngle > 0) {
+                    if (legAngle > 160) {
+                        if (squatStage === 'DOWN') {
+                            squatCounter += 1;
+                            document.getElementById('squatCount').innerText = squatCounter;
+                        }
+                        squatStage = 'UP';
+                    }
+                    if (legAngle < 100) {
+                        squatStage = 'DOWN';
+                    }
+
+                    document.getElementById('squatStage').innerText = squatStage;
+
+                    canvasCtx.save();
+                    canvasCtx.translate(activeKnee.x * canvasElement.width + 40, activeKnee.y * canvasElement.height);
+                    canvasCtx.scale(-1, 1);
+                    canvasCtx.font = '30px Arial';
+                    canvasCtx.fillStyle = squatStage === 'DOWN' ? '#00ff88' : '#ffffff';
+                    canvasCtx.fillText(Math.round(legAngle) + '°', 0, 0);
+                    canvasCtx.restore();
+                }
+            }
+        }
+
+        const pose = new Pose({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }});
+
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+
+        pose.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        camera.start();
+    </script>
+</body>
+</html>

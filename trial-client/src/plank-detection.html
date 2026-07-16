@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Plank Tracker</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --primary: #00ff88;
+            --error: #ff4444;
+            --bg-glass: rgba(15, 23, 42, 0.7);
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1280px;
+            aspect-ratio: 16/9;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .input_video {
+            display: none; 
+        }
+
+        .output_canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .ui-panel {
+            position: absolute;
+            top: 30px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .counter-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 50px;
+            border-radius: 20px;
+            text-align: center;
+            min-width: 250px;
+        }
+
+        .counter-card h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .counter-card .count {
+            font-size: 4.5rem;
+            font-weight: bold;
+            color: var(--primary);
+            margin: 10px 0;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .counter-card .stage {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            background: var(--bg-glass);
+            padding: 20px 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas" width="1280" height="720"></canvas>
+        
+        <div class="loading" id="loadingText">Loading AI Model & Camera...</div>
+
+        <div class="ui-panel">
+            <div class="counter-card">
+                <h2>Plank Timer</h2>
+                <div class="count" id="timer">0.0s</div>
+                <div class="stage" id="status">WAITING</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.querySelector('.input_video');
+        const canvasElement = document.querySelector('.output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingText = document.getElementById('loadingText');
+        const timerElement = document.getElementById('timer');
+        const statusElement = document.getElementById('status');
+
+        let isPlanking = false;
+        let plankStartTime = 0;
+        let totalPlankTime = 0;
+
+        function calculateAngle(a, b, c) {
+            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            if (angle > 180.0) angle = 360.0 - angle;
+            return angle;
+        }
+
+        function onResults(results) {
+            if(loadingText.style.display !== 'none') loadingText.style.display = 'none';
+
+            canvasCtx.setTransform(1, 0, 0, 1, 0, 0); 
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.poseLandmarks) {
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: 'rgba(255,255,255,0.2)', lineWidth: 2});
+                drawLandmarks(canvasCtx, results.poseLandmarks, {color: 'rgba(255,255,255,0.5)', lineWidth: 1, radius: 2});
+
+                const lS = results.poseLandmarks[11];
+                const lH = results.poseLandmarks[23];
+                const lA = results.poseLandmarks[27];
+                
+                const rS = results.poseLandmarks[12];
+                const rH = results.poseLandmarks[24];
+                const rA = results.poseLandmarks[28];
+
+                const leftVis = (lS.visibility + lH.visibility + lA.visibility) / 3;
+                const rightVis = (rS.visibility + rH.visibility + rA.visibility) / 3;
+
+                let tS, tH, tA;
+
+                if (leftVis > rightVis && leftVis > 0.6) {
+                    tS = lS; tH = lH; tA = lA;
+                } else if (rightVis > leftVis && rightVis > 0.6) {
+                    tS = rS; tH = rH; tA = rA;
+                }
+
+                if (tS && tH && tA) {
+                    const bodyAngle = calculateAngle(tS, tH, tA);
+                    
+                    const dx = tA.x - tS.x;
+                    const dy = tA.y - tS.y;
+                    const groundAngle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+
+                    if (bodyAngle > 160 && (groundAngle < 35 || groundAngle > 145)) {
+                        if (!isPlanking) {
+                            isPlanking = true;
+                            plankStartTime = Date.now() - totalPlankTime;
+                            statusElement.innerText = 'HOLDING';
+                            statusElement.style.color = 'var(--primary)';
+                        }
+                        totalPlankTime = Date.now() - plankStartTime;
+                    } else {
+                        if (isPlanking) {
+                            isPlanking = false;
+                            statusElement.innerText = 'FORM BROKEN';
+                            statusElement.style.color = 'var(--error)';
+                        }
+                    }
+
+                    timerElement.innerText = (totalPlankTime / 1000).toFixed(1) + 's';
+
+                    canvasCtx.beginPath();
+                    canvasCtx.moveTo(tS.x * canvasElement.width, tS.y * canvasElement.height);
+                    canvasCtx.lineTo(tH.x * canvasElement.width, tH.y * canvasElement.height);
+                    canvasCtx.lineTo(tA.x * canvasElement.width, tA.y * canvasElement.height);
+                    canvasCtx.strokeStyle = isPlanking ? '#00ff88' : '#ff4444';
+                    canvasCtx.lineWidth = 6;
+                    canvasCtx.stroke();
+
+                    canvasCtx.save();
+                    canvasCtx.translate(tH.x * canvasElement.width - 30, tH.y * canvasElement.height - 40);
+                    canvasCtx.scale(-1, 1);
+                    canvasCtx.font = 'bold 24px Arial';
+                    canvasCtx.fillStyle = isPlanking ? '#00ff88' : '#ff4444';
+                    canvasCtx.fillText(Math.round(bodyAngle) + '°', 0, 0);
+                    canvasCtx.restore();
+                } else {
+                    isPlanking = false;
+                    statusElement.innerText = 'WAITING';
+                    statusElement.style.color = '#ffffff';
+                }
+            }
+        }
+
+        const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+        
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        
+        pose.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+        
+        camera.start();
+    </script>
+</body>
+</html>
