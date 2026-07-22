@@ -2,9 +2,18 @@ import { useState } from "react";
 import ExerciseCarousel from "./ExerciseCarousel";
 import ExerciseDetail from "./ExerciseDetail";
 import exercises from "../data/exercises";
+import ExercisePractice from "./ExercisePractice";
+import WorkoutStatistics from "./report/WorkoutStatistics";
 
 export default function ExerciseSection() {
   const [selected, setSelected] = useState(exercises[0]);
+  const stats = {
+    calories: 326,
+    reps: 42,
+    sets: 4,
+    score: 8.9,
+    duration: "18m 24s",
+  };
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-20">
@@ -22,6 +31,8 @@ export default function ExerciseSection() {
       />
 
       <ExerciseDetail exercise={selected} />
+      <ExercisePractice exercise={selected} />
+      <WorkoutStatistics exercise={selected} stats={stats} />
     </section>
   );
 }
