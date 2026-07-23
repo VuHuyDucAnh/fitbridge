@@ -54,6 +54,24 @@
   --shadow-glow: 0 0 0 1px rgba(242, 98, 26, 0.4),
     0 0 22px -2px rgba(242, 98, 26, 0.42);
 
+  /* Radii — nested elements step down one level (§3.3) */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* Paper-cutout editorial surface — deliberately theme-independent (same warm
+     cream + dark ink in light and dark), so it reads as a pasted paper insert. */
+  --paper: #f3ead2;
+  --paper-2: #e7d7ac;
+  --paper-3: #f7d9b0;
+  --paper-ink: #241d10;
+  --paper-ink-2: #5c4a2a;
+  --paper-line: rgba(36, 29, 16, 0.16);
+  --paper-lift: 5px 6px 0 rgba(36, 29, 16, 0.18);
+  --paper-lift-lg: 8px 10px 0 rgba(36, 29, 16, 0.16);
+
   /* Data-viz ramp (heatmap / charts): muscle base → hot orange */
   --ramp-0: #e4e0d6;
   --ramp-1: #f6cbaa;
@@ -273,6 +291,38 @@
   .reveal.is-visible {
     opacity: 1;
     transform: none;
+  }
+
+  /* Paper-cutout surfaces — layered cream paper with a hard offset "cut" edge. */
+  .paper {
+    position: relative;
+    background: var(--paper);
+    color: var(--paper-ink);
+    border: 1px solid var(--paper-line);
+    box-shadow: var(--paper-lift);
+  }
+  .paper-card {
+    position: relative;
+    background: var(--paper);
+    color: var(--paper-ink);
+    border-radius: var(--r-lg, 20px);
+    box-shadow: var(--paper-lift);
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* the "second sheet" peeking out behind, so it reads as stacked cut paper */
+  .paper-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--paper-2);
+    transform: rotate(-1.4deg) translate(4px, 5px);
+    z-index: -1;
+  }
+  .paper-card:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: var(--paper-lift-lg);
   }
 
   /* Accent gradient text for large display type only */

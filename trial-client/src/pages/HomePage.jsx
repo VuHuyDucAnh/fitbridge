@@ -105,41 +105,56 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* How it works */}
+      {/* How it works — a pasted-paper editorial band (Vox-style, papercut) */}
       <section id="how" className="mx-auto max-w-6xl scroll-mt-28 px-5 py-10">
         <Reveal>
-          <h2 className="text-center font-display text-3xl font-extrabold sm:text-4xl">
-            {t("home.howTitle")}
-          </h2>
-        </Reveal>
-        <div className="mt-12 grid gap-5 md:grid-cols-3">
-          {steps.map((s, i) => (
-            <Reveal key={s.title} delay={i * 90}>
-              <div className="card relative h-full p-7">
-                <span className="absolute right-6 top-6 font-display text-5xl font-extrabold text-accent-surface">
-                  {i + 1}
-                </span>
-                <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-ink text-bg">
-                  <s.Icon className="h-6 w-6" />
-                </div>
-                <h3 className="text-lg font-bold">{s.title}</h3>
-                <p className="mt-2 text-ink-2">{s.body}</p>
+          <div className="paper relative overflow-hidden rounded-[var(--r-xl)] px-6 py-12 sm:px-12">
+            {/* torn paper accent strips */}
+            <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rotate-12 rounded-[var(--r-lg)]" style={{ background: "var(--paper-3)" }} aria-hidden="true" />
+            <div className="pointer-events-none absolute -bottom-10 -left-10 h-36 w-36 -rotate-6 rounded-full" style={{ background: "var(--paper-2)" }} aria-hidden="true" />
+
+            <div className="relative">
+              <span className="inline-block -rotate-1 rounded-[var(--r-sm)] bg-accent px-3 py-1 text-[0.72rem] font-extrabold uppercase tracking-[0.08em] text-accent-contrast shadow-[var(--paper-lift)]">
+                {t("home.badge")}
+              </span>
+              <h2 className="mt-5 max-w-2xl font-display text-[2rem] font-extrabold leading-[1.1] tracking-[-0.02em] text-[color:var(--paper-ink)] sm:text-[2.75rem]">
+                {t("home.howTitle")}
+              </h2>
+
+              <div className="mt-10 grid gap-6 md:grid-cols-3">
+                {steps.map((s, i) => (
+                  <Reveal key={s.title} delay={i * 90}>
+                    <article
+                      className="paper-card h-full p-6"
+                      style={{ transform: `rotate(${i % 2 === 0 ? -1 : 1.2}deg)` }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-12 w-12 place-items-center rounded-full bg-accent font-display text-2xl font-extrabold text-accent-contrast shadow-[var(--paper-lift)]">
+                          {i + 1}
+                        </span>
+                        <s.Icon className="h-6 w-6 text-[color:var(--paper-ink-2)]" />
+                      </div>
+                      <h3 className="mt-4 font-display text-xl font-extrabold text-[color:var(--paper-ink)]">{s.title}</h3>
+                      <p className="mt-2 text-[0.95rem] leading-relaxed text-[color:var(--paper-ink-2)]">{s.body}</p>
+                    </article>
+                  </Reveal>
+                ))}
               </div>
-            </Reveal>
-          ))}
-        </div>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       {/* CTA band */}
       <section className="mx-auto max-w-6xl px-5 py-16">
         <Reveal>
-          <div className="relative overflow-hidden rounded-4xl bg-ink px-8 py-14 text-center shadow-float">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-accent/30 blur-3xl animate-drift" />
+          <div className="relative overflow-hidden rounded-[var(--r-xl)] border border-accent/25 bg-raised px-8 py-14 text-center shadow-float">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-accent/25 blur-3xl animate-drift" />
             <div className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-accent/20 blur-3xl" />
-            <h2 className="relative font-display text-3xl font-extrabold text-bg sm:text-4xl">
+            <h2 className="relative font-display text-3xl font-extrabold text-ink sm:text-4xl">
               {t("home.ctaBandTitle")}
             </h2>
-            <p className="relative mx-auto mt-3 max-w-md text-ink-3">{t("home.ctaBandBody")}</p>
+            <p className="relative mx-auto mt-3 max-w-md text-ink-2">{t("home.ctaBandBody")}</p>
             <div className="relative mt-8 flex justify-center">
               <Button to="/register" size="lg" rightIcon={<ArrowRight className="h-4.5 w-4.5" />}>
                 {t("common.getStarted")}
