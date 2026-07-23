@@ -24,12 +24,18 @@ function DemoVideo() {
           {available ? (
             <video
               className="block h-auto w-full"
-              src="/media/demo-pushups.mp4"
               controls
               playsInline
               preload="metadata"
               onError={() => setAvailable(false)}
-            />
+            >
+              {/* Any of these filenames in public/media/ will play automatically */}
+              <source src="/media/demo-pushups.mp4" type="video/mp4" />
+              <source src="/media/demo.mp4" type="video/mp4" />
+              <source src="/media/pushups.mp4" type="video/mp4" />
+              <source src="/media/demo-pushups.mov" type="video/quicktime" />
+              <source src="/media/demo.webm" type="video/webm" />
+            </video>
           ) : (
             /* Elegant placeholder frame until the real footage is dropped in */
             <div className="relative grid aspect-video w-full place-items-center bg-[#0d0d0d]">

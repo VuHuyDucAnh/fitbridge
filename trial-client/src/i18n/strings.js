@@ -380,8 +380,8 @@ export const strings = {
     },
     home: {
       badge: "Huấn luyện tư thế bằng AI",
-      title1: "Phòng gym của bạn,",
-      titleAccent: "đo được từng rep.",
+      title1: "Camera là PT",
+      titleAccent: "của riêng bạn.",
       subtitle:
         "FitBridge đếm từng rep, theo dõi tư thế của bạn theo thời gian thực và biến mỗi buổi tập thành tiến bộ nhìn thấy được — riêng tư, và chỉ chia sẻ khi bạn muốn.",
       ctaPrimary: "Bắt đầu tập",

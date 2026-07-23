@@ -16,23 +16,23 @@ const CX = 180, CY = 208, FOCAL = 260;
 // Each exercise defines pose A (start) and pose B (end of the rep's hard phase).
 const EXERCISE_POSES = {
   squat: {
-    speed: 0.55, // reps per second
-    A: {
+    speed: 0.5, // reps per second
+    A: { // tall stand, arms down by the sides
       head: [0, -96, 2], neck: [0, -70, 0],
       shoulderL: [-27, -62, 0], shoulderR: [27, -62, 0],
-      elbowL: [-38, -28, 8], elbowR: [38, -28, 8],
-      wristL: [-42, 8, 12], wristR: [42, 8, 12],
+      elbowL: [-30, -30, 4], elbowR: [30, -30, 4],
+      wristL: [-31, 2, 6], wristR: [31, 2, 6],
       hip: [0, 6, 0], hipL: [-17, 14, 0], hipR: [17, 14, 0],
-      kneeL: [-19, 58, 10], kneeR: [19, 58, 10],
+      kneeL: [-19, 58, 8], kneeR: [19, 58, 8],
       ankleL: [-19, 104, 2], ankleR: [19, 104, 2],
     },
-    B: {
-      head: [0, -52, 26], neck: [0, -28, 18],
-      shoulderL: [-27, -22, 16], shoulderR: [27, -22, 16],
-      elbowL: [-34, -34, 42], elbowR: [34, -34, 42],
-      wristL: [-30, -40, 66], wristR: [30, -40, 66],
-      hip: [0, 44, -8], hipL: [-17, 50, -8], hipR: [17, 50, -8],
-      kneeL: [-21, 68, 36], kneeR: [21, 68, 36],
+    B: { // deep squat: hips drop below knees, thighs ~horizontal, arms out front
+      head: [0, -46, 24], neck: [0, -22, 16],
+      shoulderL: [-28, -16, 14], shoulderR: [28, -16, 14],
+      elbowL: [-30, -22, 46], elbowR: [30, -22, 46],
+      wristL: [-27, -30, 72], wristR: [27, -30, 72],
+      hip: [0, 52, -10], hipL: [-19, 58, -10], hipR: [19, 58, -10],
+      kneeL: [-26, 62, 46], kneeR: [26, 62, 46], // knees drive forward + out
       ankleL: [-19, 104, 2], ankleR: [19, 104, 2],
     },
   },
@@ -58,22 +58,23 @@ const EXERCISE_POSES = {
     },
   },
   "bicep-curl": {
-    speed: 0.7,
+    speed: 0.75,
     dumbbells: true,
-    A: { // arms extended down, dumbbells at thighs
+    A: { // arms fully extended down, dumbbells hanging at the thighs
       head: [0, -96, 2], neck: [0, -70, 0],
       shoulderL: [-27, -62, 0], shoulderR: [27, -62, 0],
-      elbowL: [-32, -26, 4], elbowR: [32, -26, 4],
-      wristL: [-34, 10, 10], wristR: [34, 10, 10],
+      elbowL: [-30, -24, 6], elbowR: [30, -24, 6],
+      wristL: [-31, 16, 12], wristR: [31, 16, 12],
       hip: [0, 6, 0], hipL: [-17, 14, 0], hipR: [17, 14, 0],
       kneeL: [-19, 58, 6], kneeR: [19, 58, 6],
       ankleL: [-19, 104, 2], ankleR: [19, 104, 2],
     },
-    B: { // curled: forearms up, elbows pinned at the sides
-      head: [0, -96, 2], neck: [0, -70, 0],
-      shoulderL: [-27, -62, 0], shoulderR: [27, -62, 0],
-      elbowL: [-32, -26, 4], elbowR: [32, -26, 4],
-      wristL: [-30, -58, 22], wristR: [30, -58, 22],
+    B: { // full curl: forearms rotate right up to the shoulders, elbows pinned,
+         // tiny torso lean from the effort
+      head: [0, -95, 4], neck: [0, -69, 2],
+      shoulderL: [-27, -61, 2], shoulderR: [27, -61, 2],
+      elbowL: [-29, -26, 10], elbowR: [29, -26, 10],
+      wristL: [-20, -60, 30], wristR: [20, -60, 30],
       hip: [0, 6, 0], hipL: [-17, 14, 0], hipR: [17, 14, 0],
       kneeL: [-19, 58, 6], kneeR: [19, 58, 6],
       ankleL: [-19, 104, 2], ankleR: [19, 104, 2],
@@ -145,7 +146,7 @@ export default function PoseProof({ className = "" }) {
   const lastTs = useRef(0);
   const repsRef = useRef(0);
   const lastCycle = useRef(0);
-  const [exercise, setExercise] = useState("squat");
+  const [exercise, setExercise] = useState("pushup");
   const [, force] = useState(0);
 
   const reduced =
@@ -300,16 +301,11 @@ export default function PoseProof({ className = "" }) {
             </>
           )}
 
-          {/* scan corners */}
-          <g stroke="var(--accent)" strokeWidth="2.5" fill="none" opacity="0.9">
-            <path d="M22 46 v-18 h18" /><path d="M338 46 v-18 h-18" />
-            <path d="M22 394 v18 h18" /><path d="M338 394 v18 h-18" />
-          </g>
         </svg>
 
         {/* status chips */}
-        <div className="glass pointer-events-none absolute left-4 top-4 flex w-max items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5">
-          <span className="h-2 w-2 shrink-0 animate-pulse-ring rounded-full bg-accent" style={{ borderRadius: "999px" }} />
+        <div className="glass pointer-events-none absolute left-4 top-4 inline-flex w-max max-w-[calc(100%-2rem)] items-center gap-2 overflow-hidden whitespace-nowrap rounded-full px-3 py-1.5">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
           <span className="text-[0.72rem] font-bold uppercase tracking-wider text-ink">{t("coach.tracking")}</span>
         </div>
         <div className="glass pointer-events-none absolute right-4 top-4 rounded-2xl px-3.5 py-2 text-right">

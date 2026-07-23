@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, AlertCircle, MailCheck } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, MailCheck, ArrowLeft } from "lucide-react";
 import AuthShell, { TermsLinks } from "../components/auth/AuthShell";
 import Field from "../components/ui/Field";
 import Button from "../components/ui/Button";
@@ -70,6 +70,12 @@ export default function RegisterPage() {
 
   return (
     <AuthShell>
+      <Link
+        to="/"
+        className="glow -ml-1 mb-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[0.85rem] font-semibold text-ink-2 hover:text-ink"
+      >
+        <ArrowLeft className="h-4 w-4" /> {t("common.back")}
+      </Link>
       <h1 className="font-display text-3xl font-extrabold">{t("auth.signUpTitle")}</h1>
       <p className="mt-2 text-ink-2">{t("auth.signUpSubtitle")}</p>
 
