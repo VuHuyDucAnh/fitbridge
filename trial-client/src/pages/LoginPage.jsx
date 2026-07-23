@@ -11,7 +11,7 @@ import { useApp } from "../state/AppState";
 function mapAuthError(message, t) {
   const m = (message || "").toLowerCase();
   if (m.includes("invalid login") || m.includes("credentials")) return t("auth.invalidCredentials");
-  if (m.includes("confirm")) return t("auth.checkEmail", { email: "" }).replace("  ", " ");
+  if (m.includes("confirm")) return t("auth.confirmOff");
   return t("auth.authFailed");
 }
 
@@ -19,7 +19,7 @@ export default function LoginPage() {
   const { t } = useI18n();
   const { signIn } = useApp();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [errors, setErrors] = useState({});
@@ -30,13 +30,13 @@ export default function LoginPage() {
     e.preventDefault();
     setFormError("");
     const errs = {};
-    if (!/^\S+@\S+\.\S+$/.test(email)) errs.email = t("auth.emailInvalid");
+    if (username.trim().length < 3) errs.username = t("auth.usernameShort");
     if (password.length < 8) errs.password = t("auth.passwordShort");
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
     setBusy(true);
-    const res = await signIn(email.trim(), password);
+    const res = await signIn(username.trim(), password);
     setBusy(false);
     if (res.error) {
       setFormError(mapAuthError(res.error, t));
@@ -62,13 +62,15 @@ export default function LoginPage() {
 
       <form onSubmit={submit} noValidate className="mt-8 space-y-4">
         <Field
-          label={t("auth.email")}
-          type="email"
-          autoComplete="email"
-          value={email}
-          error={errors.email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          label={t("auth.username")}
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={username}
+          error={errors.username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder={t("auth.usernamePlaceholder")}
         />
         <Field
           label={t("auth.password")}

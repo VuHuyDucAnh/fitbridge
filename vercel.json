@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm --prefix trial-client install",
+  "installCommand": "npm ci --prefix trial-client",
   "buildCommand": "npm --prefix trial-client run build",
   "outputDirectory": "trial-client/dist",
   "framework": null,

@@ -10,7 +10,7 @@ import { useApp } from "../state/AppState";
 function mapSignUpError(message, t) {
   const m = (message || "").toLowerCase();
   if (m.includes("already") || m.includes("registered") || m.includes("exists"))
-    return t("auth.emailTaken");
+    return t("auth.usernameTaken");
   if (m.includes("password")) return t("auth.passwordShort");
   return t("auth.authFailed");
 }
@@ -19,7 +19,7 @@ export default function RegisterPage() {
   const { t } = useI18n();
   const { signUp } = useApp();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const [form, setForm] = useState({ username: "", password: "", confirm: "" });
   const [agree, setAgree] = useState(false);
   const [show, setShow] = useState(false);
   const [errors, setErrors] = useState({});
@@ -32,8 +32,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setFormError("");
     const errs = {};
-    if (!form.name.trim()) errs.name = t("auth.nameRequired");
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) errs.email = t("auth.emailInvalid");
+    if (form.username.trim().length < 3) errs.username = t("auth.usernameShort");
     if (form.password.length < 8) errs.password = t("auth.passwordShort");
     if (form.confirm !== form.password) errs.confirm = t("auth.passwordMismatch");
     if (!agree) errs.agree = t("auth.mustAgree");
@@ -41,7 +40,7 @@ export default function RegisterPage() {
     if (Object.keys(errs).length) return;
 
     setBusy(true);
-    const res = await signUp(form.email.trim(), form.password, form.name.trim());
+    const res = await signUp(form.username.trim(), form.password);
     setBusy(false);
     if (res.error) {
       setFormError(mapSignUpError(res.error, t));
@@ -61,7 +60,7 @@ export default function RegisterPage() {
           <MailCheck className="h-6 w-6" />
         </div>
         <h1 className="mt-5 font-display text-3xl font-extrabold">{t("auth.signUpTitle")}</h1>
-        <p className="mt-3 text-ink-2">{t("auth.checkEmail", { email: form.email.trim() })}</p>
+        <p className="mt-3 text-ink-2">{t("auth.confirmOff")}</p>
         <Button to="/login" className="mt-8 w-full" size="lg">
           {t("nav.signIn")}
         </Button>
@@ -85,8 +84,17 @@ export default function RegisterPage() {
       )}
 
       <form onSubmit={submit} noValidate className="mt-8 space-y-4">
-        <Field label={t("auth.name")} value={form.name} error={errors.name} onChange={set("name")} autoComplete="name" maxLength={40} />
-        <Field label={t("auth.email")} type="email" value={form.email} error={errors.email} onChange={set("email")} autoComplete="email" placeholder="you@example.com" />
+        <Field
+          label={t("auth.username")}
+          value={form.username}
+          error={errors.username}
+          onChange={set("username")}
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          maxLength={30}
+          placeholder={t("auth.usernamePlaceholder")}
+        />
         <Field
           label={t("auth.password")}
           type={show ? "text" : "password"}
