@@ -1,9 +1,17 @@
-import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { EXERCISES, getExercise } from "../data/exercises";
 import { calories as calcCalories } from "../lib/fitness";
+import { supabase } from "../lib/supabase";
 
 const AppContext = createContext(null);
-const STORAGE_KEY = "fb-state-v1";
 
 /* ---------- helpers ---------- */
 
@@ -29,6 +37,12 @@ function daysAgo(n) {
   return d;
 }
 
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
 /** Deterministic ~1 year of plausible history, personalized to the profile. */
 function seedHistory(profile) {
   const rand = mulberry32(hashString(profile.name || "athlete") + 7);
@@ -37,8 +51,7 @@ function seedHistory(profile) {
 
   for (let i = 365; i >= 0; i--) {
     const day = daysAgo(i);
-    const dow = day.getDay(); // 0 Sun .. 6 Sat
-    // Higher chance on weekdays; recent weeks more consistent.
+    const dow = day.getDay();
     let chance = dow === 0 || dow === 6 ? 0.32 : 0.55;
     if (i < 42) chance += 0.15;
     if (rand() > chance) continue;
@@ -73,7 +86,6 @@ function seedHistory(profile) {
     }
   }
 
-  // Weekly weight log trending gently toward the goal.
   const weightLog = [];
   let w = weightKg + (profile.goal === "cutting" ? 4 : profile.goal === "bulking" ? -3 : 0);
   for (let i = 52; i >= 0; i--) {
@@ -83,137 +95,367 @@ function seedHistory(profile) {
     w = +(w + drift + (rand() - 0.5) * 0.4).toFixed(1);
     weightLog.push({ date: day.toISOString(), dateKey: dateKey(day), weight: w });
   }
-  // keep the latest weight consistent with the profile
   weightLog[weightLog.length - 1].weight = weightKg;
 
   return { workouts: workouts.sort((a, b) => (a.date < b.date ? 1 : -1)), weightLog };
 }
 
-function hashString(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
+/* ---------- defaults ---------- */
 
-const DEFAULT_STATE = {
-  auth: { signedIn: false, email: null },
-  profile: {
-    name: "",
-    gender: "other",
-    height: 175,
-    weight: 70,
-    age: 24,
-    level: "beginner",
-    goal: "maintaining",
-    metricsPublic: false,
-    shareMetrics: true,
-    beastMode: true,
-    bio: "",
-    avatarHue: 22,
-    joined: null,
-    onboarded: false,
-  },
-  workouts: [],
-  weightLog: [],
-  lastCheckin: null,
+const DEFAULT_PROFILE = {
+  name: "",
+  gender: "other",
+  height: 175,
+  weight: 70,
+  age: 24,
+  level: "beginner",
+  goal: "maintaining",
+  metricsPublic: false,
+  shareMetrics: true,
+  beastMode: true,
+  bio: "",
+  avatarHue: 22,
+  joined: null,
+  onboarded: false,
 };
 
-function load() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_STATE;
-    const parsed = JSON.parse(raw);
-    return { ...DEFAULT_STATE, ...parsed, profile: { ...DEFAULT_STATE.profile, ...parsed.profile } };
-  } catch {
-    return DEFAULT_STATE;
+/* ---------- row <-> app mappers ---------- */
+
+function rowToProfile(row) {
+  if (!row) return { ...DEFAULT_PROFILE };
+  return {
+    name: row.name ?? "",
+    gender: row.gender ?? "other",
+    height: Number(row.height ?? 175),
+    weight: Number(row.weight ?? 70),
+    age: Number(row.age ?? 24),
+    level: row.level ?? "beginner",
+    goal: row.goal ?? "maintaining",
+    metricsPublic: !!row.metrics_public,
+    shareMetrics: !!row.share_metrics,
+    beastMode: !!row.beast_mode,
+    bio: row.bio ?? "",
+    avatarHue: Number(row.avatar_hue ?? 22),
+    joined: row.joined ?? null,
+    onboarded: !!row.onboarded,
+  };
+}
+
+/** Convert a (partial) app-shape profile patch into DB column names. */
+function profileToRow(patch) {
+  const map = {
+    name: "name",
+    gender: "gender",
+    height: "height",
+    weight: "weight",
+    age: "age",
+    level: "level",
+    goal: "goal",
+    metricsPublic: "metrics_public",
+    shareMetrics: "share_metrics",
+    beastMode: "beast_mode",
+    bio: "bio",
+    avatarHue: "avatar_hue",
+    joined: "joined",
+    onboarded: "onboarded",
+  };
+  const row = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (k in map) row[map[k]] = v;
   }
+  return row;
+}
+
+function rowToWorkout(row) {
+  const d = new Date(row.performed_at);
+  return {
+    id: row.id,
+    exerciseId: row.exercise_id,
+    date: d.toISOString(),
+    dateKey: dateKey(d),
+    reps: Number(row.reps ?? 0),
+    sets: Number(row.sets ?? 1),
+    durationSec: Number(row.duration_sec ?? 0),
+    formScore: Number(row.form_score ?? 0),
+    calories: Number(row.calories ?? 0),
+  };
+}
+
+function workoutToRow(w, userId) {
+  return {
+    user_id: userId,
+    exercise_id: w.exerciseId,
+    performed_at: w.date || new Date().toISOString(),
+    reps: Math.round(w.reps ?? 0),
+    sets: Math.round(w.sets ?? 1),
+    duration_sec: Math.round(w.durationSec ?? 0),
+    form_score: w.formScore ?? 0,
+    calories: w.calories ?? 0,
+  };
+}
+
+function rowToWeight(row) {
+  const d = new Date(row.logged_at);
+  return { date: d.toISOString(), dateKey: dateKey(d), weight: Number(row.weight) };
 }
 
 /* ---------- provider ---------- */
 
 export function AppStateProvider({ children }) {
-  const [state, setState] = useState(load);
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [profile, setProfile] = useState({ ...DEFAULT_PROFILE });
+  const [workouts, setWorkouts] = useState([]);
+  const [weightLog, setWeightLog] = useState([]);
+  const [lastCheckin, setLastCheckin] = useState(null);
 
-  useEffect(() => {
+  const loadedUserId = useRef(null);
+
+  const userId = session?.user?.id ?? null;
+
+  const clearUserData = useCallback(() => {
+    loadedUserId.current = null;
+    setProfile({ ...DEFAULT_PROFILE });
+    setWorkouts([]);
+    setWeightLog([]);
+    setLastCheckin(null);
+  }, []);
+
+  const loadUserData = useCallback(async (uid) => {
+    setDataLoading(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const [profRes, workRes, weightRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
+        supabase
+          .from("workouts")
+          .select("*")
+          .eq("user_id", uid)
+          .order("performed_at", { ascending: false }),
+        supabase
+          .from("weight_logs")
+          .select("*")
+          .eq("user_id", uid)
+          .order("logged_at", { ascending: true }),
+      ]);
+
+      if (profRes.data) {
+        setProfile(rowToProfile(profRes.data));
+        setLastCheckin(profRes.data.last_checkin ?? null);
+      }
+      setWorkouts((workRes.data || []).map(rowToWorkout));
+      setWeightLog((weightRes.data || []).map(rowToWeight));
+      loadedUserId.current = uid;
     } catch {
-      /* storage full / unavailable — non-fatal */
+      /* network / RLS error — leave defaults; UI shows empty state */
+    } finally {
+      setDataLoading(false);
     }
-  }, [state]);
-
-  const signIn = useCallback((email) => {
-    setState((s) => ({ ...s, auth: { signedIn: true, email } }));
   }, []);
 
-  const signOut = useCallback(() => {
-    setState((s) => ({ ...s, auth: { signedIn: false, email: null } }));
-  }, []);
+  // Resolve the session once, then react to auth changes.
+  useEffect(() => {
+    let active = true;
 
-  const completeOnboarding = useCallback((data) => {
-    setState((s) => {
-      const profile = {
-        ...s.profile,
-        ...data,
-        joined: s.profile.joined || new Date().toISOString(),
-        onboarded: true,
-      };
-      const seeded = seedHistory(profile);
-      return {
-        ...s,
-        profile,
-        auth: { signedIn: true, email: s.auth.email || `${(profile.name || "athlete").toLowerCase().replace(/\s+/g, "")}@fitbridge.app` },
-        workouts: seeded.workouts,
-        weightLog: seeded.weightLog,
-        lastCheckin: new Date().toISOString(),
-      };
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      const sess = data.session ?? null;
+      setSession(sess);
+      if (sess?.user) loadUserData(sess.user.id);
+      setAuthReady(true);
     });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, sess) => {
+      if (!active) return;
+      setSession(sess ?? null);
+      const uid = sess?.user?.id ?? null;
+      if (!uid) {
+        clearUserData();
+      } else if (uid !== loadedUserId.current) {
+        loadUserData(uid);
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [loadUserData, clearUserData]);
+
+  /* ---------- auth actions ---------- */
+
+  const signUp = useCallback(async (email, password, name) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name: name || "" } },
+    });
+    if (error) return { error: error.message };
+    return { error: null, needsConfirmation: !data.session };
   }, []);
 
-  const updateProfile = useCallback((patch) => {
-    setState((s) => ({ ...s, profile: { ...s.profile, ...patch } }));
+  const signIn = useCallback(async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message };
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("onboarded")
+      .eq("id", data.user.id)
+      .maybeSingle();
+    return { error: null, onboarded: !!prof?.onboarded };
   }, []);
 
-  const addWorkout = useCallback((session) => {
-    setState((s) => {
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    clearUserData();
+  }, [clearUserData]);
+
+  /* ---------- profile / data actions ---------- */
+
+  const completeOnboarding = useCallback(
+    async (data) => {
+      const uid = session?.user?.id;
+      const joined = profile.joined || new Date().toISOString();
+      const nextProfile = { ...profile, ...data, joined, onboarded: true };
+
+      // Optimistic local update so the UI advances immediately.
+      setProfile(nextProfile);
+      setLastCheckin(new Date().toISOString());
+
+      if (!uid) return;
+
+      await supabase
+        .from("profiles")
+        .update({ ...profileToRow({ ...data, joined, onboarded: true }), last_checkin: new Date().toISOString() })
+        .eq("id", uid);
+
+      // Seed a demo training history the first time, so the dashboard is alive.
+      const { count } = await supabase
+        .from("workouts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", uid);
+
+      if (!count) {
+        const seeded = seedHistory(nextProfile);
+        const workoutRows = seeded.workouts.map((w) => workoutToRow(w, uid));
+        const weightRows = seeded.weightLog.map((x) => ({
+          user_id: uid,
+          logged_at: x.date,
+          weight: x.weight,
+        }));
+        // Insert in chunks to stay well under payload limits.
+        for (let i = 0; i < workoutRows.length; i += 200) {
+          await supabase.from("workouts").insert(workoutRows.slice(i, i + 200));
+        }
+        await supabase.from("weight_logs").insert(weightRows);
+      }
+
+      await loadUserData(uid);
+    },
+    [session, profile, loadUserData]
+  );
+
+  const updateProfile = useCallback(
+    async (patch) => {
+      setProfile((p) => ({ ...p, ...patch }));
+      const uid = session?.user?.id;
+      if (!uid) return;
+      await supabase.from("profiles").update(profileToRow(patch)).eq("id", uid);
+    },
+    [session]
+  );
+
+  const addWorkout = useCallback(
+    async (entry) => {
+      const uid = session?.user?.id;
       const now = new Date();
-      const entry = {
+      const optimistic = {
         id: `w-${Date.now()}`,
         date: now.toISOString(),
         dateKey: dateKey(now),
-        ...session,
+        ...entry,
       };
-      return { ...s, workouts: [entry, ...s.workouts] };
-    });
-  }, []);
+      setWorkouts((prev) => [optimistic, ...prev]);
+      if (!uid) return;
+      const { data } = await supabase
+        .from("workouts")
+        .insert(workoutToRow({ ...entry, date: optimistic.date }, uid))
+        .select()
+        .maybeSingle();
+      if (data) {
+        // Replace the optimistic row with the persisted one (real id).
+        setWorkouts((prev) => [rowToWorkout(data), ...prev.filter((w) => w.id !== optimistic.id)]);
+      }
+    },
+    [session]
+  );
 
-  const updateWeight = useCallback((weight) => {
-    setState((s) => {
+  const updateWeight = useCallback(
+    async (weight) => {
+      const uid = session?.user?.id;
       const now = new Date();
-      return {
-        ...s,
-        profile: { ...s.profile, weight },
-        weightLog: [
-          ...s.weightLog,
-          { date: now.toISOString(), dateKey: dateKey(now), weight },
-        ],
-        lastCheckin: now.toISOString(),
-      };
-    });
-  }, []);
+      setProfile((p) => ({ ...p, weight }));
+      setWeightLog((prev) => [
+        ...prev,
+        { date: now.toISOString(), dateKey: dateKey(now), weight },
+      ]);
+      setLastCheckin(now.toISOString());
+      if (!uid) return;
+      await Promise.all([
+        supabase.from("profiles").update({ weight, last_checkin: now.toISOString() }).eq("id", uid),
+        supabase.from("weight_logs").insert({ user_id: uid, logged_at: now.toISOString(), weight }),
+      ]);
+    },
+    [session]
+  );
 
-  const dismissCheckin = useCallback(() => {
-    setState((s) => ({ ...s, lastCheckin: new Date().toISOString() }));
-  }, []);
+  const dismissCheckin = useCallback(async () => {
+    const uid = session?.user?.id;
+    const now = new Date().toISOString();
+    setLastCheckin(now);
+    if (!uid) return;
+    await supabase.from("profiles").update({ last_checkin: now }).eq("id", uid);
+  }, [session]);
 
-  const resetAll = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setState(DEFAULT_STATE);
-  }, []);
+  const resetAll = useCallback(async () => {
+    const uid = session?.user?.id;
+    if (uid) {
+      await Promise.all([
+        supabase.from("workouts").delete().eq("user_id", uid),
+        supabase.from("weight_logs").delete().eq("user_id", uid),
+        supabase
+          .from("profiles")
+          .update({ onboarded: false, last_checkin: null })
+          .eq("id", uid),
+      ]);
+    }
+    setWorkouts([]);
+    setWeightLog([]);
+    setLastCheckin(null);
+    setProfile((p) => ({ ...p, onboarded: false }));
+  }, [session]);
+
+  const auth = useMemo(
+    () => ({
+      signedIn: !!session,
+      email: session?.user?.email ?? null,
+      userId,
+    }),
+    [session, userId]
+  );
 
   const value = useMemo(
     () => ({
-      ...state,
+      auth,
+      authReady,
+      dataLoading,
+      profile,
+      workouts,
+      weightLog,
+      lastCheckin,
+      signUp,
       signIn,
       signOut,
       completeOnboarding,
@@ -223,7 +465,24 @@ export function AppStateProvider({ children }) {
       dismissCheckin,
       resetAll,
     }),
-    [state, signIn, signOut, completeOnboarding, updateProfile, addWorkout, updateWeight, dismissCheckin, resetAll]
+    [
+      auth,
+      authReady,
+      dataLoading,
+      profile,
+      workouts,
+      weightLog,
+      lastCheckin,
+      signUp,
+      signIn,
+      signOut,
+      completeOnboarding,
+      updateProfile,
+      addWorkout,
+      updateWeight,
+      dismissCheckin,
+      resetAll,
+    ]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -244,21 +503,18 @@ export function useStats() {
     const now = new Date();
     const key = (d) => d.toISOString().slice(0, 10);
 
-    // contribution map (date -> session count), last 371 days
     const contribution = {};
     for (const w of workouts) contribution[w.dateKey] = (contribution[w.dateKey] || 0) + 1;
 
-    // streak (consecutive days up to today/yesterday)
     let streak = 0;
     for (let i = 0; i < 400; i++) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       if (contribution[key(d)]) streak++;
-      else if (i === 0) continue; // today not done yet is fine
+      else if (i === 0) continue;
       else break;
     }
 
-    // last 7 days & 30 days
     const cutoff7 = new Date(now); cutoff7.setDate(now.getDate() - 7);
     const cutoff30 = new Date(now); cutoff30.setDate(now.getDate() - 30);
     const last7 = workouts.filter((w) => new Date(w.date) >= cutoff7);
@@ -272,7 +528,6 @@ export function useStats() {
       ? +(sum(workouts.slice(0, 30), (w) => w.formScore) / Math.min(30, workouts.length)).toFixed(1)
       : 0;
 
-    // muscle volume over 30 days (reps*sets per targeted muscle)
     const muscleVolume = {};
     for (const w of last30) {
       const ex = getExercise(w.exerciseId);
@@ -281,7 +536,6 @@ export function useStats() {
     }
     const maxMuscle = Math.max(1, ...Object.values(muscleVolume));
 
-    // weekly volume series (last 12 weeks) for charts
     const weeklySeries = [];
     for (let wk = 11; wk >= 0; wk--) {
       const start = new Date(now); start.setDate(now.getDate() - wk * 7 - 6);
@@ -297,7 +551,6 @@ export function useStats() {
       });
     }
 
-    // consistency: % of last 30 days with a session; intensity: normalized weekly volume
     const activeDays = new Set(last30.map((w) => w.dateKey)).size;
     const consistency = Math.min(100, Math.round((activeDays / 30) * 100));
     const intensity = Math.min(100, Math.round((weekVolume / 900) * 100));
