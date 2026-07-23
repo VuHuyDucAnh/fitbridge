@@ -6,17 +6,20 @@ import App from "./App";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import { AppStateProvider } from "./state/AppState";
+import ErrorBoundary from "./components/ui/ErrorBoundary";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <ThemeProvider>
-      <LanguageProvider>
-        <AppStateProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </AppStateProvider>
-      </LanguageProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <LanguageProvider>
+          <AppStateProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </AppStateProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

@@ -80,7 +80,7 @@ export default function Navbar() {
               <Button to="/login" variant="ghost" size="sm" className="hidden sm:inline-flex">
                 {t("nav.signIn")}
               </Button>
-              <Button to="/onboarding" size="sm">
+              <Button to="/register" size="sm">
                 {t("common.getStarted")}
               </Button>
             </>
@@ -147,7 +147,7 @@ export default function Navbar() {
               )}
             </div>
             {!authed && (
-              <Button to="/onboarding" className="mt-4 w-full">
+              <Button to="/register" className="mt-4 w-full">
                 {t("common.getStarted")}
               </Button>
             )}

@@ -54,7 +54,7 @@ export default function HomePage() {
             </Reveal>
             <Reveal delay={180}>
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Button to="/onboarding" size="lg" rightIcon={<ArrowRight className="h-4.5 w-4.5" />}>
+                <Button to="/register" size="lg" rightIcon={<ArrowRight className="h-4.5 w-4.5" />}>
                   {t("home.ctaPrimary")}
                 </Button>
                 <Button href="#how" variant="secondary" size="lg">
@@ -141,7 +141,7 @@ export default function HomePage() {
             </h2>
             <p className="relative mx-auto mt-3 max-w-md text-ink-3">{t("home.ctaBandBody")}</p>
             <div className="relative mt-8 flex justify-center">
-              <Button to="/onboarding" size="lg" rightIcon={<ArrowRight className="h-4.5 w-4.5" />}>
+              <Button to="/register" size="lg" rightIcon={<ArrowRight className="h-4.5 w-4.5" />}>
                 {t("common.getStarted")}
               </Button>
             </div>

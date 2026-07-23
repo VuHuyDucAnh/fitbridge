@@ -11,23 +11,23 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  /* Surfaces */
-  --bg: #f7f7f5;
-  --bg-alt: #fafaf8;
+  /* Surfaces — warm off-white tied to the logo's cream field */
+  --bg: #f6f3ec;
+  --bg-alt: #fbfaf5;
   --surface: #ffffff;
-  --surface-sunken: #f1f1ee;
+  --surface-sunken: #efece3;
   --surface-raised: #ffffff;
 
   /* Text */
-  --text-primary: #0b0b0b;
-  --text-secondary: #5f6368;
-  --text-muted: #8a8f98;
+  --text-primary: #14110c;
+  --text-secondary: #5c574d;
+  --text-muted: #8a857a;
 
-  /* Accent (FitBridge orange) */
-  --accent: #ff5a1f;
-  --accent-hover: #e94f12;
-  --accent-strong: #c4400f; /* accent fill carrying white text at body size */
-  --accent-surface: #fff0e8;
+  /* Accent (FitBridge ember orange, from the logo) */
+  --accent: #f2621a;         /* bright: large type, icons, borders, rings, glows, heat */
+  --accent-hover: #ff7a3c;
+  --accent-strong: #c24a0e;  /* readable text accent + fill carrying white text (AA) */
+  --accent-surface: #fdeee2;
   --accent-contrast: #ffffff; /* text sitting on accent-strong */
 
   /* Support colors (functional, tokenized) */
@@ -40,79 +40,81 @@
   --info: #2563eb;
 
   /* Lines & glass */
-  --border: rgba(15, 15, 15, 0.08);
-  --border-strong: rgba(15, 15, 15, 0.14);
-  --glass-bg: rgba(255, 255, 255, 0.62);
-  --glass-border: rgba(255, 255, 255, 0.55);
-  --glass-border-dim: rgba(15, 15, 15, 0.08);
+  --border: rgba(20, 17, 12, 0.09);
+  --border-strong: rgba(20, 17, 12, 0.16);
+  --glass-bg: rgba(255, 255, 255, 0.64);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-border-dim: rgba(20, 17, 12, 0.08);
   --glass-blur: 20px;
 
   /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.06);
-  --shadow-md: 0 8px 24px -12px rgba(15, 15, 15, 0.14);
-  --shadow-lg: 0 24px 60px -20px rgba(15, 15, 15, 0.18);
-  --shadow-glow: 0 0 0 1px rgba(255, 90, 31, 0.35),
-    0 0 22px -2px rgba(255, 90, 31, 0.4);
+  --shadow-sm: 0 1px 2px rgba(20, 17, 12, 0.06);
+  --shadow-md: 0 8px 24px -12px rgba(20, 17, 12, 0.16);
+  --shadow-lg: 0 24px 60px -20px rgba(20, 17, 12, 0.2);
+  --shadow-glow: 0 0 0 1px rgba(242, 98, 26, 0.4),
+    0 0 22px -2px rgba(242, 98, 26, 0.42);
 
-  /* Data-viz ramp (heatmap / charts) */
-  --ramp-0: #ebedf0;
-  --ramp-1: #ffd9c6;
-  --ramp-2: #ffb08a;
-  --ramp-3: #ff7a45;
-  --ramp-4: #e94f12;
-  --ramp-5: #b3350a;
+  /* Data-viz ramp (heatmap / charts): muscle base → hot orange */
+  --ramp-0: #e4e0d6;
+  --ramp-1: #f6cbaa;
+  --ramp-2: #f7a469;
+  --ramp-3: #f5793a;
+  --ramp-4: #ef5a16;
+  --ramp-5: #d8480a;
 
-  --meta-theme: #f7f7f5;
+  --meta-theme: #f6f3ec;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0c0c0b;
-  --bg-alt: #0e0e0d;
-  --surface: #161615;
-  --surface-sunken: #111110;
-  --surface-raised: #1f1f1d;
+  /* True near-black, Strava-style. Elevation = lighter surface, not shadow. */
+  --bg: #0a0a0a;
+  --bg-alt: #0d0d0d;
+  --surface: #171716;
+  --surface-sunken: #101010;
+  --surface-raised: #201f1d;
 
-  --text-primary: #f7f7f5;
-  --text-secondary: #a6a9a4;
-  --text-muted: #74776f;
+  --text-primary: #fafaf7;
+  --text-secondary: #a9a79f;
+  --text-muted: #6f6d64;
 
-  --accent: #ff6a2b;
-  --accent-hover: #ff8551;
-  --accent-strong: #ff6a2b; /* dark text sits on it */
-  --accent-surface: rgba(255, 106, 43, 0.14);
-  --accent-contrast: #0c0c0b;
+  --accent: #fb5b18;        /* vivid ember orange */
+  --accent-hover: #ff7a45;
+  --accent-strong: #fb5b18; /* bright fill; dark text sits on it */
+  --accent-surface: rgba(251, 91, 24, 0.15);
+  --accent-contrast: #0a0a0a;
 
   --success: #37c471;
-  --success-surface: rgba(55, 196, 113, 0.14);
+  --success-surface: rgba(55, 196, 113, 0.15);
   --warning: #e0a83a;
-  --warning-surface: rgba(224, 168, 58, 0.14);
+  --warning-surface: rgba(224, 168, 58, 0.15);
   --danger: #f0655f;
-  --danger-surface: rgba(240, 101, 95, 0.14);
+  --danger-surface: rgba(240, 101, 95, 0.15);
   --info: #6aa1ff;
 
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --glass-bg: rgba(28, 28, 26, 0.62);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --glass-bg: rgba(20, 20, 19, 0.66);
   --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-border-dim: rgba(0, 0, 0, 0.4);
+  --glass-border-dim: rgba(0, 0, 0, 0.5);
   --glass-blur: 24px;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.65);
-  --shadow-glow: 0 0 0 1px rgba(255, 106, 43, 0.45),
-    0 0 24px -2px rgba(255, 106, 43, 0.5);
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 0 1px rgba(251, 91, 24, 0.5),
+    0 0 24px -2px rgba(251, 91, 24, 0.5);
 
-  --ramp-0: #22221f;
-  --ramp-1: #4a2a14;
-  --ramp-2: #7a3d16;
-  --ramp-3: #b35216;
-  --ramp-4: #e56a1f;
-  --ramp-5: #ff8a4d;
+  /* muscle base gray → hot orange, matching the reference heat map */
+  --ramp-0: #262523;
+  --ramp-1: #52301a;
+  --ramp-2: #8a4315;
+  --ramp-3: #c65616;
+  --ramp-4: #f2691d;
+  --ramp-5: #ff7a2e;
 
-  --meta-theme: #0c0c0b;
+  --meta-theme: #0a0a0a;
 }
 
 /* ============================================================= */
@@ -140,8 +142,9 @@
   }
 
   h1, h2, h3, h4 {
-    font-family: "Plus Jakarta Sans", "Be Vietnam Pro", system-ui, sans-serif;
-    line-height: 1.28; /* Vietnamese display needs >=1.25 */
+    font-family: "Archivo", "Be Vietnam Pro", system-ui, sans-serif;
+    font-weight: 800;
+    line-height: 1.26; /* Vietnamese display needs >=1.25 (Ề Ộ Ữ Ẳ Ỷ) */
     letter-spacing: -0.02em;
     color: var(--text-primary);
   }
@@ -229,7 +232,7 @@
     background: linear-gradient(
       180deg,
       var(--accent) 0%,
-      rgba(255, 90, 31, 0.15) 100%
+      color-mix(in srgb, var(--accent) 15%, transparent) 100%
     );
     -webkit-mask: linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -274,7 +277,12 @@
 
   /* Accent gradient text for large display type only */
   .text-gradient {
-    background: linear-gradient(120deg, var(--accent) 0%, #ff8a4d 60%, var(--accent) 100%);
+    background: linear-gradient(
+      120deg,
+      var(--accent) 0%,
+      var(--accent-hover) 55%,
+      var(--accent) 100%
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -308,8 +316,8 @@
   40%, 60% { transform: translateX(4px); }
 }
 @keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(255, 90, 31, 0.5); }
-  100% { box-shadow: 0 0 0 16px rgba(255, 90, 31, 0); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
+  100% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 @keyframes ambient-drift {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }

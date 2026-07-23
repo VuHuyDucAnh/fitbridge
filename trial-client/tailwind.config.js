@@ -34,7 +34,7 @@ export default {
       },
       fontFamily: {
         sans: ['"Be Vietnam Pro"', "system-ui", "sans-serif"],
-        display: ['"Plus Jakarta Sans"', '"Be Vietnam Pro"', "system-ui", "sans-serif"],
+        display: ['"Archivo"', '"Be Vietnam Pro"', "system-ui", "sans-serif"],
         mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
       },
       boxShadow: {

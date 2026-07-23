@@ -1,7 +1,19 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
-/** FitBridge brand mark — orange dumbbell. Pure SVG, theme-independent. */
-export function LogoMark({ size = 32, className = "" }) {
+/**
+ * FitBridge brand mark.
+ *
+ * Drop the real logo into the repo and it is used automatically:
+ *   trial-client/public/brand/fitbridge-mark.png   (square icon — the hand + dumbbell)
+ *   trial-client/public/brand/fitbridge-logo.png   (optional full lockup with wordmark)
+ * Transparent-background PNG/SVG looks best on the dark UI. Until a file exists,
+ * a clean SVG fallback renders so nothing is ever broken.
+ */
+
+const MARK_SRC = "/brand/fitbridge-mark.png";
+
+function FallbackMark({ size, className }) {
   return (
     <svg
       width={size}
@@ -24,12 +36,28 @@ export function LogoMark({ size = 32, className = "" }) {
   );
 }
 
+export function LogoMark({ size = 32, className = "" }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return <FallbackMark size={size} className={className} />;
+  return (
+    <img
+      src={MARK_SRC}
+      width={size}
+      height={size}
+      alt=""
+      onError={() => setOk(false)}
+      className={`shrink-0 rounded-[22%] object-contain ${className}`}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 export default function Logo({ size = 32, withWordmark = true, to = "/" }) {
   const content = (
-    <span className="inline-flex items-center gap-2.5">
-      <LogoMark size={size} className="shrink-0 drop-shadow-sm" />
+    <span className="inline-flex items-center gap-2.5 text-current">
+      <LogoMark size={size} />
       {withWordmark && (
-        <span className="font-display text-[1.15rem] font-extrabold tracking-tight text-ink">
+        <span className="font-display text-[1.2rem] font-extrabold leading-none tracking-tight">
           Fit<span className="text-accent">Bridge</span>
         </span>
       )}
