@@ -133,6 +133,34 @@ function rowToWeight(row) {
   return { date: d.toISOString(), dateKey: dateKey(d), weight: Number(row.weight) };
 }
 
+function rowToRun(row) {
+  const d = new Date(row.started_at);
+  return {
+    id: row.id,
+    date: d.toISOString(),
+    dateKey: dateKey(d),
+    durationSec: Number(row.duration_sec ?? 0),
+    distanceM: Number(row.distance_m ?? 0),
+    avgPaceSec: Number(row.avg_pace_sec ?? 0),
+    calories: Number(row.calories ?? 0),
+    path: Array.isArray(row.path) ? row.path : [],
+    note: row.note ?? "",
+  };
+}
+
+function runToRow(r, userId) {
+  return {
+    user_id: userId,
+    started_at: r.date || new Date().toISOString(),
+    duration_sec: Math.round(r.durationSec ?? 0),
+    distance_m: r.distanceM ?? 0,
+    avg_pace_sec: r.avgPaceSec ?? 0,
+    calories: r.calories ?? 0,
+    path: r.path ?? [],
+    note: r.note ?? "",
+  };
+}
+
 /* ---------- provider ---------- */
 
 export function AppStateProvider({ children }) {
@@ -141,6 +169,7 @@ export function AppStateProvider({ children }) {
   const [dataLoading, setDataLoading] = useState(false);
   const [profile, setProfile] = useState({ ...DEFAULT_PROFILE });
   const [workouts, setWorkouts] = useState([]);
+  const [runs, setRuns] = useState([]);
   const [weightLog, setWeightLog] = useState([]);
   const [lastCheckin, setLastCheckin] = useState(null);
 
@@ -152,6 +181,7 @@ export function AppStateProvider({ children }) {
     loadedUserId.current = null;
     setProfile({ ...DEFAULT_PROFILE });
     setWorkouts([]);
+    setRuns([]);
     setWeightLog([]);
     setLastCheckin(null);
   }, []);
@@ -159,7 +189,7 @@ export function AppStateProvider({ children }) {
   const loadUserData = useCallback(async (uid) => {
     setDataLoading(true);
     try {
-      const [profRes, workRes, weightRes] = await Promise.all([
+      const [profRes, workRes, weightRes, runRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
         supabase
           .from("workouts")
@@ -171,6 +201,11 @@ export function AppStateProvider({ children }) {
           .select("*")
           .eq("user_id", uid)
           .order("logged_at", { ascending: true }),
+        supabase
+          .from("runs")
+          .select("*")
+          .eq("user_id", uid)
+          .order("started_at", { ascending: false }),
       ]);
 
       if (profRes.data) {
@@ -179,6 +214,7 @@ export function AppStateProvider({ children }) {
       }
       setWorkouts((workRes.data || []).map(rowToWorkout));
       setWeightLog((weightRes.data || []).map(rowToWeight));
+      setRuns((runRes.data || []).map(rowToRun));
       loadedUserId.current = uid;
     } catch {
       /* network / RLS error — leave defaults; UI shows empty state */
@@ -376,6 +412,39 @@ export function AppStateProvider({ children }) {
     [session]
   );
 
+  const addRun = useCallback(
+    async (entry) => {
+      const uid = session?.user?.id;
+      const now = new Date();
+      const date = entry.date || now.toISOString();
+      const optimistic = {
+        id: `r-${Date.now()}`,
+        date,
+        dateKey: dateKey(new Date(date)),
+        durationSec: entry.durationSec ?? 0,
+        distanceM: entry.distanceM ?? 0,
+        avgPaceSec: entry.avgPaceSec ?? 0,
+        calories: entry.calories ?? 0,
+        path: entry.path ?? [],
+        note: entry.note ?? "",
+      };
+      setRuns((prev) => [optimistic, ...prev]);
+      if (!uid) return optimistic;
+      const { data } = await supabase
+        .from("runs")
+        .insert(runToRow({ ...entry, date }, uid))
+        .select()
+        .maybeSingle();
+      if (data) {
+        const saved = rowToRun(data);
+        setRuns((prev) => [saved, ...prev.filter((r) => r.id !== optimistic.id)]);
+        return saved;
+      }
+      return optimistic;
+    },
+    [session]
+  );
+
   const updateWeight = useCallback(
     async (weight) => {
       const uid = session?.user?.id;
@@ -409,6 +478,7 @@ export function AppStateProvider({ children }) {
       await Promise.all([
         supabase.from("workouts").delete().eq("user_id", uid),
         supabase.from("weight_logs").delete().eq("user_id", uid),
+        supabase.from("runs").delete().eq("user_id", uid),
         supabase
           .from("profiles")
           .update({ onboarded: false, last_checkin: null })
@@ -416,6 +486,7 @@ export function AppStateProvider({ children }) {
       ]);
     }
     setWorkouts([]);
+    setRuns([]);
     setWeightLog([]);
     setLastCheckin(null);
     setProfile((p) => ({ ...p, onboarded: false }));
@@ -437,6 +508,7 @@ export function AppStateProvider({ children }) {
       dataLoading,
       profile,
       workouts,
+      runs,
       weightLog,
       lastCheckin,
       signUp,
@@ -446,6 +518,7 @@ export function AppStateProvider({ children }) {
       updateProfile,
       uploadAvatar,
       addWorkout,
+      addRun,
       updateWeight,
       dismissCheckin,
       resetAll,
@@ -456,6 +529,7 @@ export function AppStateProvider({ children }) {
       dataLoading,
       profile,
       workouts,
+      runs,
       weightLog,
       lastCheckin,
       signUp,
@@ -465,6 +539,7 @@ export function AppStateProvider({ children }) {
       updateProfile,
       uploadAvatar,
       addWorkout,
+      addRun,
       updateWeight,
       dismissCheckin,
       resetAll,

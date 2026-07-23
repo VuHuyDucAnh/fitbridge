@@ -6,6 +6,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
+import RunTrackerPage from "./pages/RunTrackerPage";
 import RankingPage from "./pages/RankingPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/coach" element={<AIAssistantPage />} />
         <Route path="/ai-assistant" element={<AIAssistantPage />} />
+        <Route path="/run" element={<RunTrackerPage />} />
         <Route path="/ranking" element={<RankingPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/terms" element={<TermsPage />} />

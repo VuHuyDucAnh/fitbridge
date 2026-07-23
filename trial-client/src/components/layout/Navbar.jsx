@@ -56,6 +56,7 @@ export default function Navbar() {
     ? [
         { to: "/dashboard", label: t("nav.dashboard") },
         { to: "/coach", label: t("nav.coach") },
+        { to: "/run", label: t("nav.run") },
         { to: "/ranking", label: t("nav.ranking") },
         { to: "/profile", label: t("nav.profile") },
       ]

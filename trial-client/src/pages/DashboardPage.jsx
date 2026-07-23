@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Dumbbell, Flame, Zap, Star, TrendingUp, ArrowRight, CalendarClock, Scale } from "lucide-react";
+import { Dumbbell, Flame, Zap, Star, TrendingUp, ArrowRight, CalendarClock, Scale, Route } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Button from "../components/ui/Button";
 import StatTile from "../components/ui/StatTile";
@@ -47,9 +47,14 @@ export default function DashboardPage() {
               </h1>
               <p className="mt-1.5 text-ink-2">{t("dashboard.subtitle")}</p>
             </div>
-            <Button to="/coach" size="lg" leftIcon={<Dumbbell className="h-4.5 w-4.5" />}>
-              {t("dashboard.startWorkout")}
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              <Button to="/run" variant="secondary" size="lg" leftIcon={<Route className="h-4.5 w-4.5" />}>
+                {t("dashboard.startRun")}
+              </Button>
+              <Button to="/coach" size="lg" leftIcon={<Dumbbell className="h-4.5 w-4.5" />}>
+                {t("dashboard.startWorkout")}
+              </Button>
+            </div>
           </div>
         </Reveal>
 
