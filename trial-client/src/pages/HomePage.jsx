@@ -30,6 +30,7 @@ function DemoVideo() {
               onError={() => setAvailable(false)}
             >
               {/* Any of these filenames in public/media/ will play automatically */}
+              <source src="/media/demo-pushup.mp4" type="video/mp4" />
               <source src="/media/demo-pushups.mp4" type="video/mp4" />
               <source src="/media/demo.mp4" type="video/mp4" />
               <source src="/media/pushups.mp4" type="video/mp4" />
