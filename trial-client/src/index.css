@@ -324,6 +324,12 @@
   50% { transform: translate3d(3%, -3%, 0) scale(1.08); }
 }
 
+@keyframes pp-scan-move {
+  0%, 100% { transform: translateY(0); opacity: 0.15; }
+  50% { transform: translateY(352px); opacity: 0.6; }
+}
+.pp-scan { animation: pp-scan-move 3.6s ease-in-out infinite; will-change: transform; }
+
 .animate-float { animation: float-y 6s ease-in-out infinite; }
 .animate-spin-slow { animation: spin-slow 18s linear infinite; }
 .animate-pop { animation: pop-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -363,7 +369,8 @@
   .animate-float,
   .animate-spin-slow,
   .animate-drift,
-  .animate-pulse-ring {
+  .animate-pulse-ring,
+  .pp-scan {
     animation: none !important;
   }
 }

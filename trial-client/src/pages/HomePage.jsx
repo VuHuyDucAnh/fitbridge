@@ -2,7 +2,7 @@ import { Activity, ScanLine, ShieldCheck, Flame, ArrowRight, Camera, LineChart, 
 import PageShell from "../components/layout/PageShell";
 import Button from "../components/ui/Button";
 import Reveal from "../components/ui/Reveal";
-import Dumbbell3D from "../components/home/Dumbbell3D";
+import PoseProof from "../components/home/PoseProof";
 import { useI18n } from "../i18n/LanguageContext";
 
 export default function HomePage() {
@@ -29,63 +29,63 @@ export default function HomePage() {
 
   return (
     <PageShell>
-      {/* Hero */}
+      {/* Hero — the pose-proof panel is the point: the camera sees your form. */}
       <section className="relative overflow-hidden px-5">
-        <div className="pointer-events-none absolute -top-24 left-1/2 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-accent/10 blur-[120px]" />
-        <div className="mx-auto grid max-w-6xl items-center gap-10 py-10 lg:grid-cols-2 lg:py-16">
+        <div className="pointer-events-none absolute -top-32 right-0 h-[520px] w-[620px] rounded-full bg-accent/12 blur-[130px] animate-drift" />
+        <div className="mx-auto grid max-w-6xl items-center gap-12 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:py-14">
           <div>
             <Reveal>
-              <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-[0.78rem] font-semibold text-accent-strong shadow-soft">
+              <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.08em] text-accent-strong">
                 <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                 {t("home.badge")}
               </span>
             </Reveal>
             <Reveal delay={60}>
-              <h1 className="mt-5 font-display text-[2.6rem] font-extrabold leading-[1.08] tracking-tight sm:text-6xl">
+              <h1 className="mt-6 font-display text-[2.75rem] font-extrabold leading-[1.05] tracking-[-0.03em] sm:text-[4.75rem]">
                 {t("home.title1")}
                 <br />
-                <span className="text-gradient">{t("home.titleAccent")}</span>
+                <span className="text-accent">{t("home.titleAccent")}</span>
               </h1>
             </Reveal>
             <Reveal delay={120}>
-              <p className="mt-5 max-w-prose text-[1.05rem] leading-relaxed text-ink-2">
+              <p className="mt-6 max-w-prose text-[1.0625rem] leading-relaxed text-ink-2">
                 {t("home.subtitle")}
               </p>
             </Reveal>
             <Reveal delay={180}>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
+              <div className="mt-8 flex flex-wrap items-center gap-5">
                 <Button to="/register" size="lg" rightIcon={<ArrowRight className="h-4.5 w-4.5" />}>
                   {t("home.ctaPrimary")}
                 </Button>
-                <Button href="#how" variant="secondary" size="lg">
+                <a href="#how" className="glow rounded-lg px-1 text-[0.95rem] font-semibold text-ink underline-offset-4 hover:underline">
                   {t("home.ctaSecondary")}
-                </Button>
+                </a>
               </div>
             </Reveal>
             <Reveal delay={240}>
-              <p className="mt-5 flex items-center gap-2 text-[0.82rem] text-ink-3">
+              <p className="mt-6 flex items-center gap-2 text-[0.82rem] text-ink-3">
                 <ShieldCheck className="h-4 w-4 text-success" />
                 {t("home.trustLine")}
               </p>
             </Reveal>
+
+            {/* metrics tied to the proof, not floating social stats */}
+            <Reveal delay={300}>
+              <dl className="mt-10 flex flex-wrap gap-x-10 gap-y-4 border-t border-line pt-6">
+                {stats.map((s) => (
+                  <div key={s.label}>
+                    <dt className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-ink-3">{s.label}</dt>
+                    <dd className="font-display text-3xl font-extrabold text-ink">{s.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Reveal>
           </div>
 
-          <Reveal delay={120} className="order-first lg:order-last">
-            <Dumbbell3D className="h-[340px] sm:h-[420px]" />
+          <Reveal delay={140}>
+            <PoseProof />
           </Reveal>
         </div>
-
-        {/* Stats strip */}
-        <Reveal className="mx-auto max-w-4xl">
-          <div className="grid grid-cols-3 gap-4 rounded-3xl border border-line bg-surface/70 p-6 shadow-soft backdrop-blur">
-            {stats.map((s) => (
-              <div key={s.label} className="text-center">
-                <div className="font-display text-3xl font-extrabold text-accent-strong sm:text-4xl">{s.value}</div>
-                <div className="mt-1 text-[0.78rem] font-medium text-ink-3">{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </Reveal>
       </section>
 
       {/* Features */}
