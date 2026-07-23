@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Dumbbell, Route as RouteIcon, Trophy, User } from "lucide-react";
+import { LayoutDashboard, Dumbbell, Route as RouteIcon, Users, User } from "lucide-react";
 import { useI18n } from "../../i18n/LanguageContext";
 
 /* iOS-style magnified liquid-glass dock for mobile. The active tab lifts and
@@ -8,9 +8,9 @@ import { useI18n } from "../../i18n/LanguageContext";
    layouts. Dependency-free so it behaves identically on every device. */
 const TABS = [
   { to: "/dashboard", Icon: LayoutDashboard, key: "dashboard" },
+  { to: "/feed", Icon: Users, key: "feed" },
   { to: "/coach", Icon: Dumbbell, key: "coach" },
   { to: "/run", Icon: RouteIcon, key: "run" },
-  { to: "/ranking", Icon: Trophy, key: "ranking" },
   { to: "/profile", Icon: User, key: "profile" },
 ];
 

@@ -55,6 +55,7 @@ export default function Navbar() {
   const links = authed
     ? [
         { to: "/dashboard", label: t("nav.dashboard") },
+        { to: "/feed", label: t("nav.feed") },
         { to: "/coach", label: t("nav.coach") },
         { to: "/run", label: t("nav.run") },
         { to: "/ranking", label: t("nav.ranking") },

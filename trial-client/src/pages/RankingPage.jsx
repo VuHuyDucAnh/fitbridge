@@ -15,6 +15,7 @@ import { rankScore, tierForScore } from "../lib/fitness";
 import { useI18n } from "../i18n/LanguageContext";
 import { useApp, useStats } from "../state/AppState";
 import { supabase } from "../lib/supabase";
+import { fetchFollowing, toggleFollow } from "../lib/social";
 
 export default function RankingPage() {
   const { t, locale } = useI18n();
@@ -27,6 +28,7 @@ export default function RankingPage() {
   const myScore = rankScore({ consistency: stats.consistency, intensity: stats.intensity });
   const myTier = tierForScore(myScore).key;
   const [publicAthletes, setPublicAthletes] = useState([]);
+  const [following, setFollowing] = useState(new Set());
 
   // Real leaderboard: public profiles from the database — no invented athletes.
   useEffect(() => {
@@ -45,6 +47,25 @@ export default function RankingPage() {
       active = false;
     };
   }, []);
+
+  // Load who this user already follows.
+  useEffect(() => {
+    if (!auth.userId) return;
+    let active = true;
+    fetchFollowing(auth.userId).then((set) => active && setFollowing(set));
+    return () => { active = false; };
+  }, [auth.userId]);
+
+  const onToggleFollow = async (id) => {
+    if (!auth.userId) return;
+    const on = !following.has(id);
+    setFollowing((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+    await toggleFollow(auth.userId, id, on);
+  };
 
   // Keep this user's public stats current so others see real numbers.
   useEffect(() => {
@@ -194,7 +215,7 @@ export default function RankingPage() {
                     ]}
                   />
                 </div>
-                <Leaderboard rows={rows} />
+                <Leaderboard rows={rows} following={following} onToggleFollow={onToggleFollow} />
               </div>
             </Reveal>
 
