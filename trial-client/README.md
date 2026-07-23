@@ -1,16 +1,42 @@
-# React + Vite
+# FitBridge — client
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Train smart. Move well. FitBridge is a browser-based fitness app that counts
+your reps and checks your form in real time with on-device pose tracking, then
+turns each session into progress you can see and share.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **AI Coach** — pick a movement, train on camera, and get live rep counting +
+  form cues via MediaPipe Pose (runs entirely on-device). Each session ends with
+  a full report: calories, reps, sets, form score, what to fix, and your next
+  session. Optional **Beast Mode** shows short, clean motivational callouts.
+- **Dashboard** — weekly volume, calories, streak and form-score trends, plus a
+  weekly weight check-in.
+- **Ranking** — a full-body muscle heat map driven by your training volume; tap
+  a muscle for suggested exercises. Leaderboard, tiers, and share-to-story.
+- **Profile** — GitHub-style training-activity graph, achievements, and body
+  metrics that stay **private by default** (you choose what to show/share).
+- **Onboarding** — a guided setup (metrics, level, goal, gender, privacy).
 
-## React Compiler
+## Design system
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Central design tokens in `src/index.css` (light + dark). No raw hex in
+  components — change the palette in one file.
+- Light / Dark / System themes with no first-paint flash, `prefers-color-scheme`
+  live updates, and synced `<meta name="theme-color">`.
+- Full **Vietnamese / English** i18n (`src/i18n`), Vietnamese as first-class with
+  diacritic-safe type (Be Vietnam Pro + Plus Jakarta Sans).
+- Liquid-glass surfaces on floating chrome, Cluely-inspired hover-glow controls,
+  reduced-motion support, and AA-minded contrast (accent fills use
+  `--accent-strong` for body-size white text).
 
-## Expanding the Oxlint configuration
+## Scripts
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```bash
+npm run dev      # start the dev server
+npm run build    # production build
+npm run preview  # preview the build
+npm run lint     # oxlint
+```
+
+State persists to `localStorage`; the camera stream never leaves the device.

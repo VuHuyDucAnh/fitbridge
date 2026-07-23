@@ -3,8 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>trial-client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f7f5" id="meta-theme-color" />
+    <meta
+      name="description"
+      content="FitBridge — AI form-coaching, rep detection, and social fitness tracking."
+    />
+    <title>FitBridge — Train smart. Move well.</title>
+
+    <!-- Fonts: Be Vietnam Pro (body, full Vietnamese) + Plus Jakarta Sans (display) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- No-flash theme + locale: resolve before first paint -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("fb-theme"); // "light" | "dark" | "system"
+          var mode = stored || "system";
+          var dark =
+            mode === "dark" ||
+            (mode === "system" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var theme = dark ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", theme);
+          var meta = document.getElementById("meta-theme-color");
+          if (meta) meta.setAttribute("content", dark ? "#0c0c0b" : "#f7f7f5");
+
+          var loc = localStorage.getItem("fb-locale");
+          if (!loc) {
+            var nav = (navigator.language || "en").toLowerCase();
+            loc = nav.indexOf("vi") === 0 ? "vi" : "en";
+          }
+          document.documentElement.setAttribute("lang", loc);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
