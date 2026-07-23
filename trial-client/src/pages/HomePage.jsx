@@ -4,6 +4,7 @@ import PageShell from "../components/layout/PageShell";
 import Button from "../components/ui/Button";
 import Reveal from "../components/ui/Reveal";
 import PoseProof from "../components/home/PoseProof";
+import CompareSlider from "../components/home/CompareSlider";
 import { LogoMark } from "../components/ui/Logo";
 import { useI18n } from "../i18n/LanguageContext";
 
@@ -141,6 +142,19 @@ export default function HomePage() {
             </Reveal>
           ))}
         </div>
+      </section>
+
+      {/* Before / after compare slider */}
+      <section className="mx-auto max-w-5xl px-5 py-10">
+        <Reveal>
+          <h2 className="font-display text-3xl font-extrabold sm:text-4xl">{t("home.compareTitle")}</h2>
+          <p className="mt-2 max-w-prose text-ink-2">{t("home.compareBody")}</p>
+        </Reveal>
+        <Reveal delay={80}>
+          <div className="mt-6">
+            <CompareSlider />
+          </div>
+        </Reveal>
       </section>
 
       {/* How it works — a pasted-paper editorial band (Vox-style, papercut) */}
