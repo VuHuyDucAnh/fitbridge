@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, LogOut, Dumbbell } from "lucide-react";
+import { Menu, X, LogOut, Dumbbell, User } from "lucide-react";
 import Logo from "../ui/Logo";
 import Button from "../ui/Button";
 import ThemeToggle from "../ui/ThemeToggle";
@@ -14,6 +14,8 @@ export default function Navbar() {
   const { profile, auth, signOut } = useApp();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const authed = auth.signedIn || profile.onboarded;
@@ -27,7 +29,28 @@ export default function Navbar() {
 
   useEffect(() => {
     setMenuOpen(false);
+    setAccountOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    const onDown = (e) => {
+      if (accountRef.current && !accountRef.current.contains(e.target)) setAccountOpen(false);
+    };
+    const onKey = (e) => e.key === "Escape" && setAccountOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [accountOpen]);
+
+  const logout = () => {
+    setAccountOpen(false);
+    signOut();
+    navigate("/");
+  };
 
   const links = authed
     ? [
@@ -87,9 +110,48 @@ export default function Navbar() {
               <Button to="/coach" size="sm" className="hidden md:inline-flex" leftIcon={<Dumbbell className="h-4 w-4" />}>
                 {t("dashboard.startWorkout")}
               </Button>
-              <NavLink to="/profile" className="glow hidden rounded-full sm:inline-flex" aria-label={t("nav.profile")}>
-                <Avatar name={profile.name} hue={profile.avatarHue} src={profile.avatarUrl} size={38} />
-              </NavLink>
+              <div ref={accountRef} className="relative hidden sm:block">
+                <button
+                  onClick={() => setAccountOpen((o) => !o)}
+                  className="glow rounded-full"
+                  aria-label={t("nav.account")}
+                  aria-haspopup="menu"
+                  aria-expanded={accountOpen}
+                >
+                  <Avatar name={profile.name} hue={profile.avatarHue} src={profile.avatarUrl} size={38} />
+                </button>
+                {accountOpen && (
+                  <div
+                    role="menu"
+                    className="glass animate-pop absolute right-0 top-[calc(100%+0.6rem)] w-56 rounded-2xl p-2 shadow-float"
+                  >
+                    <div className="px-3 py-2">
+                      <p className="truncate font-display text-[0.95rem] font-extrabold text-ink">{profile.name || t("nav.account")}</p>
+                      {profile.name && (
+                        <p className="truncate text-[0.78rem] text-ink-3">@{profile.name}</p>
+                      )}
+                    </div>
+                    <div className="my-1 h-px bg-line" />
+                    <button
+                      onClick={() => {
+                        setAccountOpen(false);
+                        navigate("/profile");
+                      }}
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[0.9rem] font-semibold text-ink hover:bg-sunken"
+                    >
+                      <User className="h-4 w-4 text-ink-2" /> {t("nav.profile")}
+                    </button>
+                    <button
+                      onClick={logout}
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[0.9rem] font-semibold text-danger hover:bg-danger/10"
+                    >
+                      <LogOut className="h-4 w-4" /> {t("nav.signOut")}
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -163,10 +225,7 @@ export default function Navbar() {
               <ThemeToggle />
               {authed && (
                 <button
-                  onClick={() => {
-                    signOut();
-                    navigate("/");
-                  }}
+                  onClick={logout}
                   className="glow ml-auto inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[0.85rem] font-semibold text-ink-2 hover:bg-sunken"
                 >
                   <LogOut className="h-4 w-4" /> {t("nav.signOut")}

@@ -35,10 +35,37 @@ export function buildReport({ exercise, snap, profile, locale }) {
     : Math.max(1, Math.round(reps / 10));
 
   const faults = snap.faults || {};
+
+  // No real work → an honest empty report, never a fabricated score.
+  const noWork = isHold ? holdSeconds < 3 : reps === 0;
+  if (noWork) {
+    return {
+      exerciseId: exercise.id,
+      reps: 0,
+      sets: 0,
+      calories: 0,
+      formScore: 0,
+      durationSec: Math.round(durationSec),
+      holdSeconds: 0,
+      noWork: true,
+      good: [],
+      fix: [
+        locale === "vi"
+          ? "Chưa ghi nhận rep nào — đứng trọn khung hình, đủ sáng, rồi thử lại."
+          : "No reps were detected — get your whole body in frame with good light, then try again.",
+      ],
+      next:
+        locale === "vi"
+          ? "Bắt đầu lại và thực hiện vài rep để mình phân tích tư thế nhé."
+          : "Start again and perform a few reps so the coach can analyse your form.",
+      quote: quoteForSeed(locale, 1),
+    };
+  }
+
   let formScore = snap.formScore;
   if (formScore == null) {
     const penalties = (faults.depth || 0) * 0.15 + (faults.hips || 0) * 0.2 + (faults.elbows || 0) * 0.15;
-    formScore = +Math.max(5, 9.6 - penalties).toFixed(1);
+    formScore = +Math.max(5, 9.2 - penalties).toFixed(1);
   }
 
   // What went well / to improve

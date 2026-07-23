@@ -9,6 +9,36 @@ export default function SessionReport({ report, exercise, onSave, onAgain, saved
   const { t, locale } = useI18n();
   const isHold = exercise.detection.mode === "hold";
 
+  // Honest empty session: no reps / no hold were detected. Never show a score.
+  if (report.noWork) {
+    return (
+      <div className="space-y-4">
+        <Reveal>
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-warning-surface text-warning">
+              <X className="h-5 w-5" />
+            </span>
+            <h2 className="font-display text-2xl font-extrabold">{t("coach.noWorkTitle")}</h2>
+          </div>
+        </Reveal>
+        <Reveal delay={60}>
+          <div className="card p-6">
+            <p className="text-[0.95rem] leading-relaxed text-ink-2">{report.fix[0]}</p>
+            <p className="mt-3 text-[0.92rem] leading-relaxed text-ink-2">{report.next}</p>
+            <p className="mt-4 text-[0.82rem] text-ink-3">
+              {formatDuration(report.durationSec)} · {exercise.name[locale]}
+            </p>
+          </div>
+        </Reveal>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Button onClick={onAgain} leftIcon={<RotateCcw className="h-4 w-4" />}>
+            {t("coach.startSession")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Reveal>
