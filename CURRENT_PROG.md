@@ -46,17 +46,42 @@ show a blank white page again.
 
 ---
 
-## Milestone 2 — Visual rebuild (BLOCKED on design approval)
+## Milestone 2 — Visual rebuild (IN PROGRESS)
 
-Per the brief's §1 hard gate, the visual layer (real logo, Strava-style dark UI,
-exact muscle map, design tokens) does **not** start until the design plan is approved.
-Design plan posted in chat — waiting on "approved".
+Design plan approved. Working dark-first, Strava-style, pushing per screen.
 
-Screens, in intended order once approved:
-1. Design tokens + Button system + logo asset
-2. Landing / Home
-3. Auth (login/register/onboarding)
-4. Dashboard (Strava feed)
-5. AI Coach
-6. Ranking + **muscle heat map** (match reference image exactly)
-7. Profile
+### Done + pushed
+- **Foundation** — retuned tokens to a dark-first, logo-derived palette (near-black
+  Strava surfaces + vivid ember orange, AA-safe accent split). Archivo display +
+  Be Vietnam Pro body. Logo now loads `/brand/fitbridge-mark.png` with an SVG
+  fallback; fixed the wordmark being invisible on dark panels.
+- **Muscle heat map** — rebuilt as front + back anatomical figures, muscles glow
+  orange by trained volume, all 12 groups selectable. Matches the reference's
+  structure/feel (hand-built SVG; a drop-in exact asset can replace it like the logo).
+- **Home** — hero rebuilt around the pose-skeleton camera-proof signature
+  (TRACKING / reps / live-form / joint-angle chips). Kills the banned centered hero.
+
+### Round 2 — expressive layer (done + pushed)
+- **Real data, not fake** — removed the seeded year of demo workouts; app now shows
+  only real logged sessions (empty states cover new accounts).
+- **Interactive 3D** — the hero pose-skeleton is now a real orbitable 3D figure
+  (drag to spin, inertia, idle auto-rotate, pauses off-screen / reduced-motion).
+  Pure SVG + math, no WebGL, so it stays crisp and un-AI-looking.
+- **Papercut / Vox band** — "how it works" rebuilt as a warm pasted-paper editorial
+  insert with layered cut-paper step cards; added `--paper-*` + radius tokens.
+
+> Higgsfield + Motion connectors both have **0 credits**, so no AI media was
+> generated (would require a paid top-up). Everything above is hand-built, which
+> also better serves the "don't look too AI" goal.
+
+### Remaining screens (next)
+- App shell: Strava-style **bottom tab bar** (mobile).
+- Dashboard → **activity feed** with workout cards (distance/pace/time, kudos,
+  muscle-map thumbnails).
+- Auth pages / onboarding polish · AI Coach · Profile · Ranking layout.
+
+### Blocked on you (needed to fully verify + finish)
+1. **Deploy the current branch to Vercel and confirm sign-in works** — this is the
+   one thing I can't test here (sandbox blocks outbound to Supabase).
+2. **Add the logo file** at `trial-client/public/brand/fitbridge-mark.png`.
+3. **Supabase → Auth → Email → turn off "Confirm email"** for a frictionless demo.

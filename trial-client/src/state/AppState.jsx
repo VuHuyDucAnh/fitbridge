@@ -7,97 +7,15 @@ import {
   useState,
   useCallback,
 } from "react";
-import { EXERCISES, getExercise } from "../data/exercises";
-import { calories as calcCalories } from "../lib/fitness";
+import { getExercise } from "../data/exercises";
 import { supabase } from "../lib/supabase";
 
 const AppContext = createContext(null);
 
 /* ---------- helpers ---------- */
 
-function mulberry32(seed) {
-  let a = seed;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function dateKey(d) {
   return d.toISOString().slice(0, 10);
-}
-
-function daysAgo(n) {
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() - n);
-  return d;
-}
-
-function hashString(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
-/** Deterministic ~1 year of plausible history, personalized to the profile. */
-function seedHistory(profile) {
-  const rand = mulberry32(hashString(profile.name || "athlete") + 7);
-  const workouts = [];
-  const weightKg = profile.weight || 70;
-
-  for (let i = 365; i >= 0; i--) {
-    const day = daysAgo(i);
-    const dow = day.getDay();
-    let chance = dow === 0 || dow === 6 ? 0.32 : 0.55;
-    if (i < 42) chance += 0.15;
-    if (rand() > chance) continue;
-
-    const sessions = rand() > 0.8 ? 2 : 1;
-    for (let s = 0; s < sessions; s++) {
-      const ex = EXERCISES[Math.floor(rand() * EXERCISES.length)];
-      const sets = 3 + Math.floor(rand() * 3);
-      const perSet = ex.detection.mode === "hold" ? 0 : 8 + Math.floor(rand() * 8);
-      const reps = perSet * sets;
-      const durationSec =
-        ex.detection.mode === "hold"
-          ? sets * (40 + Math.floor(rand() * 30))
-          : Math.round(reps * 2.8 + sets * 45);
-      const formScore = +(7 + rand() * 2.7).toFixed(1);
-      workouts.push({
-        id: `seed-${i}-${s}`,
-        exerciseId: ex.id,
-        date: day.toISOString(),
-        dateKey: dateKey(day),
-        reps,
-        sets,
-        durationSec,
-        formScore,
-        calories: calcCalories({
-          exerciseId: ex.id,
-          reps,
-          seconds: ex.detection.mode === "hold" ? durationSec : 0,
-          weightKg,
-        }),
-      });
-    }
-  }
-
-  const weightLog = [];
-  let w = weightKg + (profile.goal === "cutting" ? 4 : profile.goal === "bulking" ? -3 : 0);
-  for (let i = 52; i >= 0; i--) {
-    const day = daysAgo(i * 7);
-    const drift =
-      profile.goal === "cutting" ? -0.14 : profile.goal === "bulking" ? 0.12 : 0;
-    w = +(w + drift + (rand() - 0.5) * 0.4).toFixed(1);
-    weightLog.push({ date: day.toISOString(), dateKey: dateKey(day), weight: w });
-  }
-  weightLog[weightLog.length - 1].weight = weightKg;
-
-  return { workouts: workouts.sort((a, b) => (a.date < b.date ? 1 : -1)), weightLog };
 }
 
 /* ---------- defaults ---------- */
@@ -326,30 +244,22 @@ export function AppStateProvider({ children }) {
 
       if (!uid) return;
 
+      // Record the starting weight as the first real data point, nothing fake.
       await supabase
         .from("profiles")
         .update({ ...profileToRow({ ...data, joined, onboarded: true }), last_checkin: new Date().toISOString() })
         .eq("id", uid);
 
-      // Seed a demo training history the first time, so the dashboard is alive.
-      const { count } = await supabase
-        .from("workouts")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", uid);
-
-      if (!count) {
-        const seeded = seedHistory(nextProfile);
-        const workoutRows = seeded.workouts.map((w) => workoutToRow(w, uid));
-        const weightRows = seeded.weightLog.map((x) => ({
-          user_id: uid,
-          logged_at: x.date,
-          weight: x.weight,
-        }));
-        // Insert in chunks to stay well under payload limits.
-        for (let i = 0; i < workoutRows.length; i += 200) {
-          await supabase.from("workouts").insert(workoutRows.slice(i, i + 200));
+      if (nextProfile.weight) {
+        const { count } = await supabase
+          .from("weight_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid);
+        if (!count) {
+          await supabase
+            .from("weight_logs")
+            .insert({ user_id: uid, logged_at: joined, weight: nextProfile.weight });
         }
-        await supabase.from("weight_logs").insert(weightRows);
       }
 
       await loadUserData(uid);

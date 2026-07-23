@@ -59,6 +59,7 @@ export const strings = {
       ctaPrimary: "Start training",
       ctaSecondary: "See how it works",
       trustLine: "Runs in your browser. Camera stays on your device.",
+      dragHint: "Drag to rotate",
       f1Title: "Real-time rep counting",
       f1Body:
         "On-device pose tracking counts reps and watches your joints, angle by angle — no wearables, no setup.",
@@ -356,6 +357,7 @@ export const strings = {
       ctaPrimary: "Bắt đầu tập",
       ctaSecondary: "Xem cách hoạt động",
       trustLine: "Chạy ngay trên trình duyệt. Camera luôn ở trên thiết bị của bạn.",
+      dragHint: "Kéo để xoay",
       f1Title: "Đếm rep thời gian thực",
       f1Body:
         "Nhận diện tư thế ngay trên thiết bị, đếm rep và theo dõi từng khớp theo góc — không cần thiết bị đeo.",
