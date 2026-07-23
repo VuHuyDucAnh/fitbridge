@@ -1,6 +1,14 @@
 import { useMemo } from "react";
 import { useI18n } from "../../i18n/LanguageContext";
 
+// Local calendar day (YYYY-MM-DD) — must match AppState.dateKey so the cells
+// line up with how each workout was bucketed.
+function localKey(d) {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 function colorFor(count) {
   if (!count) return "var(--ramp-0)";
   if (count === 1) return "var(--ramp-2)";
@@ -21,7 +29,7 @@ export default function ContributionGraph({ contribution }) {
     start.setDate(start.getDate() - start.getDay()); // back to Sunday
 
     for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
-      const key = d.toISOString().slice(0, 10);
+      const key = localKey(d);
       days.push({ key, date: new Date(d), count: contribution[key] || 0 });
     }
     // chunk into weeks (columns of 7)

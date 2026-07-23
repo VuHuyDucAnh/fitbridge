@@ -327,6 +327,7 @@ export const strings = {
       weeklyCheckinBody: "It's been a week. How's your weight tracking?",
       recentTitle: "Recent sessions",
       achievementsTitle: "Achievements",
+      achievementUnlocked: "Achievement unlocked",
       shareToggle: "Include metrics when I share progress",
     },
     dashboard: {
@@ -700,6 +701,7 @@ export const strings = {
       weeklyCheckinBody: "Đã một tuần rồi. Cân nặng của bạn thế nào?",
       recentTitle: "Buổi tập gần đây",
       achievementsTitle: "Thành tựu",
+      achievementUnlocked: "Mở khóa thành tựu",
       shareToggle: "Kèm chỉ số khi tôi chia sẻ tiến độ",
     },
     dashboard: {

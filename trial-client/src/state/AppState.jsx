@@ -14,8 +14,14 @@ const AppContext = createContext(null);
 
 /* ---------- helpers ---------- */
 
+// Local calendar day (YYYY-MM-DD in the user's own timezone). Using local time
+// keeps a late-evening or early-morning session on the day it actually happened,
+// so the contribution graph and streaks line up with the user's calendar.
 function dateKey(d) {
-  return d.toISOString().slice(0, 10);
+  const x = new Date(d);
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${x.getFullYear()}-${m}-${day}`;
 }
 
 // FitBridge uses simple username + password. Supabase auth is email-based, so we
@@ -562,7 +568,7 @@ export function useStats() {
 
   return useMemo(() => {
     const now = new Date();
-    const key = (d) => d.toISOString().slice(0, 10);
+    const key = dateKey; // local calendar day, matches workout.dateKey
 
     const contribution = {};
     for (const w of workouts) contribution[w.dateKey] = (contribution[w.dateKey] || 0) + 1;
