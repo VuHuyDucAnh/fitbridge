@@ -111,34 +111,91 @@ Design plan approved. Working dark-first, Strava-style, pushing per screen.
 ## ROADMAP — big features queued for next sessions (user-approved direction)
 
 Work top-to-bottom; each item ends with commit + push + this file updated.
+Everything must be REAL data through Supabase — no fabricated numbers anywhere.
 
-1. **Coach session UX + AI summary** (user's top complaint)
-   - Replace the white flash when the camera starts with a dark stage +
-     "Bắt đầu bài tập" overlay button; camera only starts after pressing it.
-   - Save every finished session to Supabase (already wired via addWorkout) and
-     show an end-of-session AI-style summary (form breakdown per rep from the
-     existing usePoseDetection angle data; no external paid API needed —
-     summarize locally, optionally later a free LLM endpoint).
-   - **Sequence builder**: let the user queue exercises (e.g. push-up ×12 →
-     squat ×15 → plank 40s), then the session runs the queue automatically.
-2. **Strava-style social layer** (schema next session):
-   - `posts` table (user, workout ref, caption, visibility) + `kudos` +
-     `follows`; feed page = real posts from followed users; share-progress
-     posts from the profile. RLS mirrors profiles.metrics_public.
-   - Run tracking (GPS w/ geolocation API, route map, distance/pace) as a new
-     exercise type.
-3. **Nutrition tracking**: meals table (photo, kcal estimate), daily 3-meal log,
-   calendar + reminders (Notification API), progress charts. Photo→calorie
-   needs a vision API — pick a free tier (e.g. OpenRouter free vision model)
-   and keep the key server-side (Supabase Edge Function).
-4. **Body map v2**: continuous human silhouette (single outline, muscles as
-   clipped regions inside it) so it reads as one person, front/back.
-5. **Cluely-style interactive compare slider** on the landing page: two meeting
-   photos (user will supply), drag divider, bilingual positive bubble matching
-   the chosen locale. Keep the existing Sarah/Minh conversation.
-6. **Luxury polish pass**: glass morphing transitions between routes, magnified
-   dock-style bottom nav on mobile, refined hover ring on every control
-   (already tokenized), light/dark audit at 125% Windows scaling.
+### 1. Coach session — make it actually work (highest priority)
+   - **Real-time form check WHILE exercising**: overlay a live "GOOD FORM / FIX:
+     <cue>" badge from `usePoseDetection` joint angles per rep; green when within
+     the exercise's flex/extend thresholds, amber with a specific cue when off.
+   - **Honest scoring bug**: current session scored ~9.6 with ZERO reps — score
+     must be 0 / "no reps detected" when reps===0. Gate the summary on real reps.
+   - **End-of-session AI summary that pitches like a real PT**: per-rep form
+     breakdown (depth, tempo, symmetry) from the recorded angle series; strengths
+     + specific fixes + next-session suggestion. Try a FREE LLM (OpenRouter free
+     tier / Groq) via a Supabase Edge Function (key server-side) with a local
+     rule-based fallback so it always works.
+   - **Exercise history**: every finished session already writes to `workouts`;
+     add a per-exercise history view + the session report persisted & re-openable.
+   - **"How it's done" stick-figure simulation**: reuse PoseProof to demo the
+     movement with the target joint angle visualized on the figure (arc + degrees)
+     so users understand camera position / depth.
+   - **Sequence builder**: queue exercises (push-up ×12 → squat ×15 → plank 40s);
+     session auto-advances through the queue instead of manual single-select.
+   - **Start flow**: dark stage + big start button (done) — keep, wire to record.
+
+### 2. Strava-style run tracking (real GPS, DB-backed)
+   - Geolocation API: track duration, pace, distance (km/mi per user pref),
+     splits, elevation if available. New `runs` table + `run_points` (lat/lng/ts).
+   - Route map (Leaflet + OSM tiles, free) with the path drawn in accent orange;
+     animated "draw-on" of the trail like Strava. Data analysis (pace chart).
+
+### 3. Social layer (Strava clone, DB works)
+   - `posts` (user, workout/run ref, caption, visibility) + `kudos` + `follows`.
+   - Feed page = real posts from followed users; "share progress" from profile.
+   - RLS mirrors profiles.metrics_public.
+
+### 4. Nutrition + scheduling (the coach persona)
+   - `meals` (photo, detected items, kcal + macros, meal slot, date). Photo →
+     computer-vision calorie estimate via a FREE vision model (OpenRouter free
+     vision / Gemini free tier) behind a Supabase Edge Function (key server-side).
+   - Daily 3-meal log, calendar view, Notification API reminders ("hôm nay ăn gì /
+     tập gì"), progress charts. Meal + workout plan adapts to goal.
+
+### 5. Body map v2 (looks like one real person)
+   - Replace the disjointed regions with ONE continuous anatomical silhouette
+     (single body outline; muscles are clipped regions inside it) front + back,
+     matching the reference image the user shared (smooth muscular figure, orange
+     heat gradient). Likely author as a detailed SVG with `<clipPath>` per muscle.
+
+### 6. MASSIVE UI/UX upgrade — Vox papercut × iOS Liquid Glass, luxury/delicate
+   - Apply the collage / Vox paper-cut treatment + orange-red accents + liquid
+     glass consistently to EVERY surface (not just the landing "how it works").
+   - **Liquid glass everywhere on the nav layer**: refine `.glass`, add a
+     magnified dock-style bottom nav on mobile (inspiration: the pasted
+     magnified-dock + LiquidGlassCard code — adapt, don't copy).
+   - **Cluely-style button hover ring on ALL buttons**: thin elegant glowing
+     accent circumference on hover + focus (extend the tokenized `.glow`/Button
+     ::after ring to every control; audit page-local buttons).
+   - **Route transitions**: glass morph / cross-fade between pages.
+   - Must run fully on ALL browsers/machines (Alienware/Chrome, non-mac), no
+     mac-only APIs; test at 100% and 125% Windows scaling.
+
+### 7. Cluely-style interactive compare slider (landing "features")
+   - Two business-meeting photos (user will supply): left = guy insecure about
+     body ("why can't I get jacked?" bubble), right = same guy using FitBridge
+     with a POSITIVE bubble. Draggable divider (ew-resize), reveal on drag.
+   - Bubble text follows the chosen locale (EN chose → English positive line, VI
+     chose → Vietnamese). KEEP the existing Sarah/Minh conversation; ADD this as
+     another feature depiction. Use OUR design system (orange/glass), not blue.
+
+### 8. Smaller queued items
+   - **Achievement toasts**: fun little congrats notification the moment an
+     achievement unlocks (compare prev vs new computeAchievements on data change).
+   - **Contribution graph coloring**: the GitHub-style squares must light accent
+     on trained days (currently stays dark even with a logged session) — verify
+     dateKey timezone alignment.
+   - **Profile right column**: Body-metrics + Achievements are cramped/overflow on
+     some laptop widths — re-lay-out (already partly fixed; do a proper 2-col →
+     stacked responsive audit).
+   - Full native-Vietnamese pass over all ~600 i18n strings (ongoing).
+
+### DONE so far (rounds 1–5, all on `claude/fitbridge-rebuild`)
+Backend+auth (username/pwd, @fitbridge.app), crash fix (scrollTo), real data /
+no mocks, real leaderboard + achievements, avatar upload, muscle map v1, papercut
+"how it works", interactive multi-exercise 3D figure (push-up default now,
+improved squat/curl), warm light mode, real /terms page, forgot-pwd removed,
+register back button, favicon = logo mark, demo video wired (demo-pushup.mp4),
+TRACKING chip artifact fixed, camera-stage white-flash fixed.
 
 ### Blocked on you (needed to fully verify + finish)
 1. **Deploy the current branch to Vercel and confirm sign-in works** — this is the
