@@ -11,17 +11,18 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  /* Surfaces — warm off-white tied to the logo's cream field */
-  --bg: #f6f3ec;
-  --bg-alt: #fbfaf5;
-  --surface: #ffffff;
-  --surface-sunken: #efece3;
-  --surface-raised: #ffffff;
+  /* Surfaces — warm cream, softened so light mode never glares.
+     No pure white anywhere; everything sits on the logo's paper tone. */
+  --bg: #f1ece0;
+  --bg-alt: #f5f0e5;
+  --surface: #faf6ec;
+  --surface-sunken: #e9e3d4;
+  --surface-raised: #fdfaf2;
 
-  /* Text */
-  --text-primary: #14110c;
-  --text-secondary: #5c574d;
-  --text-muted: #8a857a;
+  /* Text — warm near-black, slightly lifted to cut contrast glare */
+  --text-primary: #201b12;
+  --text-secondary: #5f594c;
+  --text-muted: #8b8577;
 
   /* Accent (FitBridge ember orange, from the logo) */
   --accent: #f2621a;         /* bright: large type, icons, borders, rings, glows, heat */
@@ -42,8 +43,8 @@
   /* Lines & glass */
   --border: rgba(20, 17, 12, 0.09);
   --border-strong: rgba(20, 17, 12, 0.16);
-  --glass-bg: rgba(255, 255, 255, 0.64);
-  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-bg: rgba(250, 246, 236, 0.66);
+  --glass-border: rgba(255, 252, 244, 0.6);
   --glass-border-dim: rgba(20, 17, 12, 0.08);
   --glass-blur: 20px;
 
@@ -80,7 +81,7 @@
   --ramp-4: #ef5a16;
   --ramp-5: #d8480a;
 
-  --meta-theme: #f6f3ec;
+  --meta-theme: #f1ece0;
 }
 
 :root[data-theme="dark"] {

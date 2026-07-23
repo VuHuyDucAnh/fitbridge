@@ -1,9 +1,40 @@
+import { useState } from "react";
 import { Activity, ScanLine, ShieldCheck, Flame, ArrowRight, Camera, LineChart, ClipboardCheck } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Button from "../components/ui/Button";
 import Reveal from "../components/ui/Reveal";
 import PoseProof from "../components/home/PoseProof";
+import { LogoMark } from "../components/ui/Logo";
 import { useI18n } from "../i18n/LanguageContext";
+
+/* Real demo footage: drops in automatically when the file exists at
+   public/media/demo-pushups.mp4 (landscape phone video). The frame takes the
+   video's own aspect ratio, so nothing is ever letterboxed or cropped. */
+function DemoVideo() {
+  const { t } = useI18n();
+  const [available, setAvailable] = useState(true);
+  if (!available) return null;
+  return (
+    <section className="mx-auto max-w-5xl px-5 py-10">
+      <Reveal>
+        <h2 className="font-display text-3xl font-extrabold sm:text-4xl">{t("home.demoTitle")}</h2>
+        <p className="mt-2 max-w-prose text-ink-2">{t("home.demoBody")}</p>
+      </Reveal>
+      <Reveal delay={80}>
+        <figure className="mt-6 overflow-hidden rounded-[var(--r-xl)] border border-line-strong bg-black shadow-float">
+          <video
+            className="block h-auto w-full"
+            src="/media/demo-pushups.mp4"
+            controls
+            playsInline
+            preload="metadata"
+            onError={() => setAvailable(false)}
+          />
+        </figure>
+      </Reveal>
+    </section>
+  );
+}
 
 export default function HomePage() {
   const { t } = useI18n();
@@ -21,12 +52,6 @@ export default function HomePage() {
     { Icon: LineChart, title: t("home.how3Title"), body: t("home.how3Body") },
   ];
 
-  const stats = [
-    { value: "6", label: t("home.statsA") },
-    { value: "33", label: t("home.statsB") },
-    { value: "100%", label: t("home.statsC") },
-  ];
-
   return (
     <PageShell>
       {/* Hero — the pose-proof panel is the point: the camera sees your form. */}
@@ -35,8 +60,9 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-6xl items-center gap-12 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:py-14">
           <div>
             <Reveal>
-              <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.08em] text-accent-strong">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              {/* TalkBridge-style brand pill: the real logo mark leads the badge */}
+              <span className="glass inline-flex items-center gap-2.5 rounded-full px-4 py-2 text-[0.78rem] font-bold text-accent-strong">
+                <LogoMark size={22} />
                 {t("home.badge")}
               </span>
             </Reveal>
@@ -69,17 +95,6 @@ export default function HomePage() {
               </p>
             </Reveal>
 
-            {/* metrics tied to the proof, not floating social stats */}
-            <Reveal delay={300}>
-              <dl className="mt-10 flex flex-wrap gap-x-10 gap-y-4 border-t border-line pt-6">
-                {stats.map((s) => (
-                  <div key={s.label}>
-                    <dt className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-ink-3">{s.label}</dt>
-                    <dd className="font-display text-3xl font-extrabold text-ink">{s.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Reveal>
           </div>
 
           <Reveal delay={140}>
@@ -88,8 +103,11 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Real demo video (renders only when the file exists) */}
+      <DemoVideo />
+
       {/* Features */}
-      <section className="mx-auto max-w-6xl px-5 py-20">
+      <section id="features" className="mx-auto max-w-6xl scroll-mt-28 px-5 py-20">
         <div className="grid gap-5 sm:grid-cols-2">
           {features.map((f, i) => (
             <Reveal key={f.title} delay={i * 70}>

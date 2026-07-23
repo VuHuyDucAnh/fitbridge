@@ -36,7 +36,11 @@ export default function Navbar() {
         { to: "/ranking", label: t("nav.ranking") },
         { to: "/profile", label: t("nav.profile") },
       ]
-    : [{ to: "/", label: t("nav.home") }];
+    : [
+        { to: "/", label: t("nav.home") },
+        { hash: "/#features", label: t("nav.features") },
+        { hash: "/#how", label: t("nav.how") },
+      ];
 
   const linkClass = ({ isActive }) =>
     `rounded-lg px-3 py-2 text-[0.9rem] font-semibold transition-colors ${
@@ -50,15 +54,25 @@ export default function Navbar() {
           scrolled ? "py-1.5 shadow-float" : "py-2.5"
         }`}
       >
-        <Logo size={scrolled ? 28 : 32} />
+        <Logo size={scrolled ? 34 : 40} />
 
         {/* Desktop links */}
         <div className="hidden items-center gap-0.5 lg:flex">
-          {links.map((l) => (
-            <NavLink key={l.to} to={l.to} className={linkClass} end={l.to === "/"}>
-              {l.label}
-            </NavLink>
-          ))}
+          {links.map((l) =>
+            l.hash ? (
+              <a
+                key={l.hash}
+                href={l.hash}
+                className="rounded-lg px-3 py-2 text-[0.9rem] font-semibold text-ink-2 transition-colors hover:text-ink"
+              >
+                {l.label}
+              </a>
+            ) : (
+              <NavLink key={l.to} to={l.to} className={linkClass} end={l.to === "/"}>
+                {l.label}
+              </NavLink>
+            )
+          )}
         </div>
 
         {/* Right cluster */}
@@ -118,20 +132,31 @@ export default function Navbar() {
               {(authed
                 ? [{ to: "/", label: t("nav.home") }, ...links]
                 : [...links, { to: "/login", label: t("nav.signIn") }]
-              ).map((l) => (
-                <NavLink
-                  key={l.to}
-                  to={l.to}
-                  end={l.to === "/"}
-                  className={({ isActive }) =>
-                    `rounded-xl px-4 py-3 text-[1rem] font-semibold ${
-                      isActive ? "bg-accent-surface text-accent-strong" : "text-ink hover:bg-sunken"
-                    }`
-                  }
-                >
-                  {l.label}
-                </NavLink>
-              ))}
+              ).map((l) =>
+                l.hash ? (
+                  <a
+                    key={l.hash}
+                    href={l.hash}
+                    onClick={() => setMenuOpen(false)}
+                    className="rounded-xl px-4 py-3 text-[1rem] font-semibold text-ink hover:bg-sunken"
+                  >
+                    {l.label}
+                  </a>
+                ) : (
+                  <NavLink
+                    key={l.to}
+                    to={l.to}
+                    end={l.to === "/"}
+                    className={({ isActive }) =>
+                      `rounded-xl px-4 py-3 text-[1rem] font-semibold ${
+                        isActive ? "bg-accent-surface text-accent-strong" : "text-ink hover:bg-sunken"
+                      }`
+                    }
+                  >
+                    {l.label}
+                  </NavLink>
+                )
+              )}
             </div>
             <div className="mt-5 flex items-center gap-2">
               <LangToggle />
