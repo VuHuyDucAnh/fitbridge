@@ -129,10 +129,17 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
               <span className="glass rounded-full px-3 py-1 font-mono text-[0.78rem] font-semibold text-ink">{Math.round(angle)}°</span>
             </div>
 
-            {cueLabel && (
+            {/* Live form verdict: amber cue when off, green "good form" otherwise */}
+            {cueLabel ? (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 animate-pop rounded-full bg-warning-surface px-4 py-2 text-[0.85rem] font-semibold text-warning shadow-float">
-                ⚠ {cueLabel}
+                ⚠ {t("coach.fixPrefix")}: {cueLabel}
               </div>
+            ) : (
+              tracking !== "searching" && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-success-surface px-4 py-2 text-[0.85rem] font-semibold text-success shadow-float">
+                  ✓ {t("coach.goodForm")}
+                </div>
+              )
             )}
 
             <div className="absolute right-4 bottom-4 glass rounded-full px-3 py-1 text-[0.78rem] font-semibold text-ink">
