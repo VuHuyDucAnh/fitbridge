@@ -108,6 +108,52 @@ Design plan approved. Working dark-first, Strava-style, pushing per screen.
 
 ---
 
+## ROUND 6 — full roadmap build (items 1–7 + logout) — DONE + pushed
+
+All seven roadmap items plus a logout feature were built on this branch:
+
+1. **Coach** — honest empty-session report (0 reps → "no reps detected", no
+   fabricated score, no save); live GOOD-FORM / FIX badge while exercising;
+   **sequence builder** (queue exercises with rep/hold targets, auto-advance +
+   auto-save through the queue, "Exercise N of M" + up-next).
+2. **Run tracking** — real Geolocation runs (distance/time/pace/calories),
+   start/pause/resume/finish, per-km/mi splits, Strava-style animated orange
+   route trail (pure SVG, no external tiles). `runs` table (migration 0005),
+   run history, /run route + nav + dashboard action.
+3. **Social** — `posts`/`follows`/`kudos` tables (migration 0006, RLS by
+   visibility). /feed page: composer sharing a text update or your latest
+   workout/run with real stats, public/followers scope, kudos, delete own
+   posts. Follow/Following toggle on the leaderboard.
+4. **Nutrition** — `meals` table + owner-scoped `meal-photos` bucket
+   (migration 0007) + `kcal_target`. /nutrition page: per-day
+   breakfast/lunch/dinner/snack log, calorie ring + macro bars vs real
+   Mifflin-St Jeor targets, 7-day calorie chart, photo capture → calorie
+   estimate via the `analyze-meal` edge function (free OpenRouter vision, key
+   server-side) with graceful manual-entry fallback, Notification-API reminder.
+   > The edge function is in the repo but NOT deployed to your project — deploy
+   > it and set `OPENROUTER_API_KEY` to turn on AI photo estimates. Until then
+   > manual entry works.
+5. **Body map v2** — one continuous anatomical silhouette (mirrored half-body
+   point list → smooth Catmull-Rom outline) with every muscle clipped inside
+   it, front + back, orange heat gradient.
+6. **UI/UX** — Cluely glow ring already on every Button; added a magnified
+   liquid-glass **bottom dock** nav for mobile (active tab lifts/scales).
+7. **Compare slider** — landing before/after draggable divider (mouse/touch/
+   keyboard), locale-aware speech bubbles, orange/glass. Drop photos at
+   `public/media/compare-before.jpg` + `compare-after.jpg`.
+8. **Logout** — desktop avatar dropdown (Profile + Sign out) + mobile drawer.
+   Also: achievement toasts on unlock; contribution graph + streaks re-keyed
+   to the user's LOCAL calendar day.
+
+### Still needs you
+- Deploy `supabase/functions/analyze-meal` + set `OPENROUTER_API_KEY` for AI
+  meal photos (optional; manual entry works without it).
+- Drop in the two compare-slider photos.
+- Deploy the branch to Vercel to confirm the live sign-in round-trip (sandbox
+  blocks outbound to Supabase, so that's the one thing untestable here).
+
+---
+
 ## ROADMAP — big features queued for next sessions (user-approved direction)
 
 Work top-to-bottom; each item ends with commit + push + this file updated.
