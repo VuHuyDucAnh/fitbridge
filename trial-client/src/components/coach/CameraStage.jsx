@@ -11,6 +11,7 @@ const CUE_TEXT = {
   hips: { en: "Keep your hips in line", vi: "Giữ hông thẳng hàng" },
   deeper: { en: "Go a little deeper", vi: "Hạ sâu hơn một chút" },
   elbows: { en: "Pin your elbows in", vi: "Ép sát khuỷu tay" },
+  position: { en: "Get into the exercise position", vi: "Vào đúng tư thế bài tập" },
 };
 const TRACK_TEXT = {
   front: { en: "Front view", vi: "Chính diện" },

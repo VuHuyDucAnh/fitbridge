@@ -32,6 +32,15 @@ const L = {
   lHip: 23, rHip: 24, lKnee: 25, rKnee: 26, lAnkle: 27, rAnkle: 28,
 };
 
+/* ---------- strictness tuning ----------
+   These make rep counting refuse anything that isn't the real exercise. */
+const MIN_VIS = 0.55;       // required visibility of the tracked joint triple
+const MIN_TORSO_VIS = 0.4;  // required visibility of shoulders+hips for the pose gate
+const DWELL_FRAMES = 2;     // frames the joint must stay in an extreme before it registers
+const MIN_REP_MS = 400;     // debounce: no two reps closer than this (kills jitter/shakes)
+const MAX_JUMP = 45;        // deg/frame; a bigger swing is treated as tracking noise
+const MIN_ROM_FRAC = 0.55;  // a rep must span at least this fraction of the full range
+
 function angleAt(a, b, c) {
   const rad = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
   let deg = Math.abs((rad * 180) / Math.PI);
@@ -41,6 +50,63 @@ function angleAt(a, b, c) {
 
 function vis(lm, ...idx) {
   return idx.reduce((s, i) => s + (lm[i]?.visibility ?? 0), 0) / idx.length;
+}
+
+function avgY(lm, ...idx) {
+  return idx.reduce((s, i) => s + (lm[i]?.y ?? 0), 0) / idx.length;
+}
+
+// Tilt of the torso (shoulder→hip) from vertical: 0° = standing upright, 90° = lying flat.
+function torsoTilt(lm) {
+  const sx = (lm[L.lShoulder].x + lm[L.rShoulder].x) / 2;
+  const sy = (lm[L.lShoulder].y + lm[L.rShoulder].y) / 2;
+  const hx = (lm[L.lHip].x + lm[L.rHip].x) / 2;
+  const hy = (lm[L.lHip].y + lm[L.rHip].y) / 2;
+  const dx = hx - sx, dy = hy - sy;
+  if (Math.hypot(dx, dy) < 0.06) return null; // too small to trust
+  const deg = Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
+  return deg > 90 ? 180 - deg : deg;
+}
+
+/* Spatial gate: the whole-body posture must match the selected exercise, or NO
+   rep can be counted. This is what stops "select push-up, shake your head" from
+   scoring — a head shake while upright fails the horizontal-body requirement. */
+function poseGate(lm, formKey) {
+  if (vis(lm, L.lShoulder, L.rShoulder, L.lHip, L.rHip) < MIN_TORSO_VIS)
+    return { ok: false, reason: "searching" };
+  const tilt = torsoTilt(lm);
+  if (tilt == null) return { ok: false, reason: "searching" };
+
+  const shoulderY = avgY(lm, L.lShoulder, L.rShoulder);
+  const wristVis = vis(lm, L.lWrist, L.rWrist);
+  const wristY = avgY(lm, L.lWrist, L.rWrist);
+
+  switch (formKey) {
+    case "pushup":
+      // Body must be roughly horizontal and the hands planted (not overhead).
+      if (tilt < 40) return { ok: false, reason: "wrongpose" };
+      if (wristVis > 0.4 && wristY < shoulderY - 0.03) return { ok: false, reason: "wrongpose" };
+      return { ok: true };
+    case "pullup":
+      // Upright/hanging with hands overhead.
+      if (tilt > 55) return { ok: false, reason: "wrongpose" };
+      if (wristVis > 0.4 && wristY > shoulderY) return { ok: false, reason: "wrongpose" };
+      return { ok: true };
+    case "squat":
+      // Standing upright (some forward lean allowed).
+      if (tilt > 60) return { ok: false, reason: "wrongpose" };
+      return { ok: true };
+    case "curl": {
+      // Upright, with the upper arm hanging down and pinned — reject raising the
+      // whole arm / random hand waving.
+      if (tilt > 60) return { ok: false, reason: "wrongpose" };
+      const elbowY = avgY(lm, L.lElbow, L.rElbow);
+      if (elbowY < shoulderY) return { ok: false, reason: "wrongpose" };
+      return { ok: true };
+    }
+    default:
+      return { ok: true };
+  }
 }
 
 /**
@@ -57,20 +123,7 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
   const cfg = exercise.detection;
 
   // Machine state kept in a ref (updated per-frame without re-rendering).
-  const m = useRef({
-    reps: 0,
-    stage: cfg.countPhase === "flex" ? "extend" : "flex",
-    minAngle: 180,
-    maxAngle: 0,
-    qualitySum: 0,
-    qualityCount: 0,
-    holdMs: 0,
-    lastTs: 0,
-    cue: null,
-    tracking: "—",
-    angle: 0,
-    startedAt: 0,
-  });
+  const m = useRef(freshMachine());
 
   const [status, setStatus] = useState("idle"); // idle|loading|running|error
   const [error, setError] = useState(null);
@@ -139,13 +192,7 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
     setError(null);
     setStatus("loading");
     // reset machine
-    m.current = {
-      reps: 0,
-      stage: cfg.countPhase === "flex" ? "extend" : "flex",
-      minAngle: 180, maxAngle: 0, qualitySum: 0, qualityCount: 0,
-      holdMs: 0, lastTs: now(), cue: null, tracking: "—", angle: 0,
-      startedAt: performance.now(),
-    };
+    m.current = freshMachine();
     setLive((v) => ({ ...v, reps: 0, cue: null, quality: null, holdSeconds: 0, elapsed: 0 }));
 
     try {
@@ -215,69 +262,136 @@ function now() {
   return performance.now();
 }
 
-/* ---------- rep analysis ---------- */
+function freshMachine() {
+  return {
+    reps: 0,
+    stage: "start",          // "start" | "flex" | "extend"
+    smoothAngle: null,       // EMA-smoothed joint angle
+    inFlexFrames: 0,
+    inExtendFrames: 0,
+    reachedFlex: false,      // did this cycle genuinely hit the flexed extreme?
+    reachedExtend: false,    // …and the extended extreme?
+    cycleMin: 180,
+    cycleMax: 0,
+    lastRepTs: 0,
+    qualitySum: 0,
+    qualityCount: 0,
+    holdMs: 0,
+    lastTs: now(),
+    cue: null,
+    tracking: "—",
+    angle: 0,
+    startedAt: performance.now(),
+  };
+}
+
+/* ---------- rep analysis (strict) ----------
+   Four gates must ALL pass before an angle transition can count as a rep:
+   (1) the body posture matches the exercise, (2) the tracked joint is clearly
+   visible, (3) the angle is smoothed and single-frame spikes are rejected, and
+   (4) a full down→up (or up→down) cycle with real range of motion completes,
+   with dwell time in each extreme and a debounce between reps. */
 function analyzeReps(lm, s, cfg, ctx, canvas, accent, onRep, onFault) {
   const joint = cfg.joint; // "elbow" | "knee"
   const tripL = joint === "elbow" ? [L.lShoulder, L.lElbow, L.lWrist] : [L.lHip, L.lKnee, L.lAnkle];
   const tripR = joint === "elbow" ? [L.rShoulder, L.rElbow, L.rWrist] : [L.rHip, L.rKnee, L.rAnkle];
 
+  // (1) Whole-body posture gate. On failure, freeze the cycle so nothing counts.
+  const gate = poseGate(lm, cfg.formKey);
+  if (!gate.ok) {
+    s.tracking = gate.reason === "searching" ? "searching" : "adjust";
+    s.cue = gate.reason === "wrongpose" ? "position" : null;
+    s.reachedFlex = false;
+    s.reachedExtend = false;
+    s.inFlexFrames = 0;
+    s.inExtendFrames = 0;
+    s.cycleMin = 180;
+    s.cycleMax = 0;
+    return;
+  }
+
+  // (2) Pick the clearest side and require solid joint visibility.
   const visL = vis(lm, ...tripL);
   const visR = vis(lm, ...tripR);
   const shoulderDist = Math.abs(lm[L.lShoulder].x - lm[L.rShoulder].x);
 
-  let angle = 0;
-  if (visL > 0.5 && visR > 0.5 && shoulderDist > 0.15) {
+  let angle = null;
+  let trip = null;
+  if (visL > MIN_VIS && visR > MIN_VIS && shoulderDist > 0.12) {
     s.tracking = "front";
     angle = (angleAt(lm[tripL[0]], lm[tripL[1]], lm[tripL[2]]) +
       angleAt(lm[tripR[0]], lm[tripR[1]], lm[tripR[2]])) / 2;
-  } else if (visL >= visR && visL > 0.4) {
+  } else if (visL >= visR && visL > MIN_VIS) {
     s.tracking = "left";
+    trip = tripL;
     angle = angleAt(lm[tripL[0]], lm[tripL[1]], lm[tripL[2]]);
-    drawLimb(ctx, canvas, lm, tripL, s.stage === "flex" ? "#ff3b6b" : accent);
-  } else if (visR > 0.4) {
+  } else if (visR > MIN_VIS) {
     s.tracking = "right";
+    trip = tripR;
     angle = angleAt(lm[tripR[0]], lm[tripR[1]], lm[tripR[2]]);
-    drawLimb(ctx, canvas, lm, tripR, s.stage === "flex" ? "#ff3b6b" : accent);
   } else {
     s.tracking = "searching";
     return;
   }
+  if (trip) drawLimb(ctx, canvas, lm, trip, s.stage === "flex" ? "#ff3b6b" : accent);
 
-  s.angle = angle;
-  s.minAngle = Math.min(s.minAngle, angle);
-  s.maxAngle = Math.max(s.maxAngle, angle);
+  // (3) Noise filter: EMA smoothing; damp single-frame spikes from tracking glitches.
+  if (s.smoothAngle == null) s.smoothAngle = angle;
+  const jump = angle - s.smoothAngle;
+  if (Math.abs(jump) > MAX_JUMP) {
+    s.smoothAngle += Math.sign(jump) * MAX_JUMP * 0.3; // clamp the spike
+  } else {
+    s.smoothAngle = s.smoothAngle * 0.6 + angle * 0.4;
+  }
+  const a = s.smoothAngle;
+  s.angle = a;
+  s.cycleMin = Math.min(s.cycleMin, a);
+  s.cycleMax = Math.max(s.cycleMax, a);
 
-  // State machine + rep count on the configured transition.
-  if (angle <= cfg.flex && s.stage !== "flex") {
+  // (4) Strict state machine: dwell + full cycle + minimum ROM + debounce.
+  s.inFlexFrames = a <= cfg.flex ? s.inFlexFrames + 1 : 0;
+  s.inExtendFrames = a >= cfg.extend ? s.inExtendFrames + 1 : 0;
+
+  if (s.inFlexFrames >= DWELL_FRAMES) s.reachedFlex = true;
+  if (s.inExtendFrames >= DWELL_FRAMES) s.reachedExtend = true;
+
+  const nowTs = performance.now();
+  const romOk = s.cycleMax - s.cycleMin >= Math.abs(cfg.extend - cfg.flex) * MIN_ROM_FRAC;
+  const debounced = nowTs - s.lastRepTs >= MIN_REP_MS;
+
+  if (s.inFlexFrames >= DWELL_FRAMES && s.stage !== "flex") {
     s.stage = "flex";
-    if (cfg.countPhase === "flex") countRep(s, cfg, onRep, onFault);
-  } else if (angle >= cfg.extend && s.stage !== "extend") {
+    if (cfg.countPhase === "flex" && s.reachedExtend && romOk && debounced)
+      countRep(s, cfg, onRep, onFault, nowTs);
+  } else if (s.inExtendFrames >= DWELL_FRAMES && s.stage !== "extend") {
     s.stage = "extend";
-    if (cfg.countPhase === "extend") countRep(s, cfg, onRep, onFault);
+    if (cfg.countPhase === "extend" && s.reachedFlex && romOk && debounced)
+      countRep(s, cfg, onRep, onFault, nowTs);
   }
 
-  // Live cue on form (depth + alignment), non-blocking.
-  s.cue = liveCue(lm, cfg, angle, s);
+  // Live form cue (depth + alignment), non-blocking.
+  s.cue = liveCue(lm, cfg, a, s);
 }
 
-function countRep(s, cfg, onRep, onFault) {
+function countRep(s, cfg, onRep, onFault, nowTs) {
   s.reps += 1;
-  // Quality from range of motion achieved this rep.
-  const rom = s.maxAngle - s.minAngle;
+  const rom = s.cycleMax - s.cycleMin;
   const target = Math.abs(cfg.extend - cfg.flex);
   let quality = Math.max(0.4, Math.min(1, rom / (target * 0.9)));
-  // Depth bonus/penalty based on whether we truly reached the flexed position.
-  if (cfg.formKey !== "plank") {
-    const deepEnough = s.minAngle <= cfg.flex + 12;
-    if (!deepEnough) {
-      quality *= 0.8;
-      onFault?.("depth");
-    }
+  // Depth check: did we truly reach the flexed extreme?
+  const deepEnough = s.cycleMin <= cfg.flex + 12;
+  if (!deepEnough) {
+    quality *= 0.8;
+    onFault?.("depth");
   }
   s.qualitySum += quality;
   s.qualityCount += 1;
-  s.minAngle = 180;
-  s.maxAngle = 0;
+  s.lastRepTs = nowTs;
+  // Reset the cycle: a new rep must earn both extremes again.
+  s.reachedFlex = false;
+  s.reachedExtend = false;
+  s.cycleMin = 180;
+  s.cycleMax = 0;
   onRep?.(s.reps, quality);
 }
 
@@ -308,10 +422,25 @@ function bodyLineAngle(lm) {
 
 /* ---------- hold analysis (plank) ---------- */
 function analyzeHold(lm, s, cfg, nowTs, onFault) {
-  const line = bodyLineAngle(lm);
-  s.angle = line ?? 0;
   const dt = s.lastTs ? nowTs - s.lastTs : 0;
   s.lastTs = nowTs;
+
+  // A plank is a HORIZONTAL hold. Standing upright (torso vertical) makes a
+  // straight shoulder-hip-ankle line too, so gate on body orientation first —
+  // otherwise just standing there would rack up "hold" time.
+  const tilt = torsoTilt(lm);
+  if (tilt == null) {
+    s.tracking = "searching";
+    return;
+  }
+  if (tilt < 40) {
+    s.tracking = "adjust";
+    s.cue = "position";
+    return;
+  }
+
+  const line = bodyLineAngle(lm);
+  s.angle = line ?? 0;
 
   if (line != null && line >= cfg.straight) {
     s.tracking = "holding";
