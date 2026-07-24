@@ -180,6 +180,7 @@ export const strings = {
       invalidCredentials: "Incorrect username or password.",
       emailTaken: "That username is taken — try signing in instead.",
       authFailed: "We couldn't complete that. Please try again.",
+      providerDisabled: "Sign-ups are turned off for this app. If you're the owner: in Supabase → Authentication → Sign In / Providers, turn the Email provider ON and keep \"Confirm email\" OFF.",
       leftTitle: "Every rep, accounted for.",
       leftBody:
         "Real-time form coaching, honest progress, and a community that shows up.",
@@ -594,6 +595,7 @@ export const strings = {
       invalidCredentials: "Tên đăng nhập hoặc mật khẩu không đúng.",
       emailTaken: "Tên đăng nhập đã tồn tại — hãy đăng nhập thay vì đăng ký.",
       authFailed: "Không thể hoàn tất. Vui lòng thử lại.",
+      providerDisabled: "Ứng dụng đang tắt đăng ký. Nếu bạn là chủ sở hữu: vào Supabase → Authentication → Sign In / Providers, BẬT nhà cung cấp Email và giữ \"Confirm email\" TẮT.",
       leftTitle: "Đếm trọn từng rep.",
       leftBody:
         "Huấn luyện tư thế thời gian thực, tiến bộ trung thực, và một cộng đồng luôn có mặt.",

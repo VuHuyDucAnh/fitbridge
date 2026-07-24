@@ -9,6 +9,8 @@ import { useApp } from "../state/AppState";
 
 function mapSignUpError(message, t) {
   const m = (message || "").toLowerCase();
+  if (m.includes("provider") || m.includes("signups are disabled") || m.includes("signups not allowed") || m.includes("disabled"))
+    return t("auth.providerDisabled");
   if (m.includes("already") || m.includes("registered") || m.includes("exists"))
     return t("auth.usernameTaken");
   if (m.includes("password")) return t("auth.passwordShort");

@@ -26,8 +26,11 @@ function DemoVideo() {
             <video
               className="block h-auto w-full"
               controls
+              autoPlay
+              muted
+              loop
               playsInline
-              preload="metadata"
+              preload="auto"
               onError={() => setAvailable(false)}
             >
               {/* Any of these filenames in public/media/ will play automatically */}

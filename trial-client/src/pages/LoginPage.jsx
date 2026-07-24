@@ -10,6 +10,8 @@ import { useApp } from "../state/AppState";
 /** Map Supabase auth errors to safe, localized copy (never leak raw output). */
 function mapAuthError(message, t) {
   const m = (message || "").toLowerCase();
+  if (m.includes("provider") || m.includes("logins are disabled") || m.includes("signups are disabled") || m.includes("disabled"))
+    return t("auth.providerDisabled");
   if (m.includes("invalid login") || m.includes("credentials")) return t("auth.invalidCredentials");
   if (m.includes("confirm")) return t("auth.confirmOff");
   return t("auth.authFailed");
