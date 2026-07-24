@@ -58,6 +58,7 @@ export default function Navbar() {
         { to: "/feed", label: t("nav.feed") },
         { to: "/coach", label: t("nav.coach") },
         { to: "/run", label: t("nav.run") },
+        { to: "/nutrition", label: t("nav.nutrition") },
         { to: "/ranking", label: t("nav.ranking") },
         { to: "/profile", label: t("nav.profile") },
       ]

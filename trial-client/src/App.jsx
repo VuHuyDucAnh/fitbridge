@@ -8,6 +8,7 @@ import DashboardPage from "./pages/DashboardPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
 import RunTrackerPage from "./pages/RunTrackerPage";
 import FeedPage from "./pages/FeedPage";
+import NutritionPage from "./pages/NutritionPage";
 import RankingPage from "./pages/RankingPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/ai-assistant" element={<AIAssistantPage />} />
         <Route path="/run" element={<RunTrackerPage />} />
         <Route path="/feed" element={<FeedPage />} />
+        <Route path="/nutrition" element={<NutritionPage />} />
         <Route path="/ranking" element={<RankingPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/terms" element={<TermsPage />} />

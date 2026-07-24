@@ -154,6 +154,38 @@ function rowToRun(row) {
   };
 }
 
+function rowToMeal(row) {
+  return {
+    id: row.id,
+    eatenOn: row.eaten_on, // 'YYYY-MM-DD'
+    slot: row.slot || "breakfast",
+    title: row.title || "",
+    photoUrl: row.photo_url || "",
+    items: Array.isArray(row.items) ? row.items : [],
+    kcal: Number(row.kcal ?? 0),
+    protein: Number(row.protein ?? 0),
+    carbs: Number(row.carbs ?? 0),
+    fat: Number(row.fat ?? 0),
+    ai: !!row.ai,
+  };
+}
+
+function mealToRow(m, userId) {
+  return {
+    user_id: userId,
+    eaten_on: m.eatenOn,
+    slot: m.slot || "breakfast",
+    title: m.title || "",
+    photo_url: m.photoUrl || "",
+    items: m.items ?? [],
+    kcal: m.kcal ?? 0,
+    protein: m.protein ?? 0,
+    carbs: m.carbs ?? 0,
+    fat: m.fat ?? 0,
+    ai: !!m.ai,
+  };
+}
+
 function runToRow(r, userId) {
   return {
     user_id: userId,
@@ -176,6 +208,7 @@ export function AppStateProvider({ children }) {
   const [profile, setProfile] = useState({ ...DEFAULT_PROFILE });
   const [workouts, setWorkouts] = useState([]);
   const [runs, setRuns] = useState([]);
+  const [meals, setMeals] = useState([]);
   const [weightLog, setWeightLog] = useState([]);
   const [lastCheckin, setLastCheckin] = useState(null);
 
@@ -188,6 +221,7 @@ export function AppStateProvider({ children }) {
     setProfile({ ...DEFAULT_PROFILE });
     setWorkouts([]);
     setRuns([]);
+    setMeals([]);
     setWeightLog([]);
     setLastCheckin(null);
   }, []);
@@ -195,7 +229,7 @@ export function AppStateProvider({ children }) {
   const loadUserData = useCallback(async (uid) => {
     setDataLoading(true);
     try {
-      const [profRes, workRes, weightRes, runRes] = await Promise.all([
+      const [profRes, workRes, weightRes, runRes, mealRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
         supabase
           .from("workouts")
@@ -212,6 +246,12 @@ export function AppStateProvider({ children }) {
           .select("*")
           .eq("user_id", uid)
           .order("started_at", { ascending: false }),
+        supabase
+          .from("meals")
+          .select("*")
+          .eq("user_id", uid)
+          .order("eaten_on", { ascending: false })
+          .order("created_at", { ascending: true }),
       ]);
 
       if (profRes.data) {
@@ -221,6 +261,7 @@ export function AppStateProvider({ children }) {
       setWorkouts((workRes.data || []).map(rowToWorkout));
       setWeightLog((weightRes.data || []).map(rowToWeight));
       setRuns((runRes.data || []).map(rowToRun));
+      setMeals((mealRes.data || []).map(rowToMeal));
       loadedUserId.current = uid;
     } catch {
       /* network / RLS error — leave defaults; UI shows empty state */
@@ -451,6 +492,53 @@ export function AppStateProvider({ children }) {
     [session]
   );
 
+  const addMeal = useCallback(
+    async (entry) => {
+      const uid = session?.user?.id;
+      const optimistic = { id: `m-${Date.now()}`, items: [], kcal: 0, protein: 0, carbs: 0, fat: 0, ai: false, photoUrl: "", title: "", ...entry };
+      setMeals((prev) => [optimistic, ...prev]);
+      if (!uid) return optimistic;
+      const { data } = await supabase.from("meals").insert(mealToRow(entry, uid)).select().maybeSingle();
+      if (data) {
+        const saved = rowToMeal(data);
+        setMeals((prev) => [saved, ...prev.filter((m) => m.id !== optimistic.id)]);
+        return saved;
+      }
+      return optimistic;
+    },
+    [session]
+  );
+
+  const deleteMeal = useCallback(
+    async (id) => {
+      setMeals((prev) => prev.filter((m) => m.id !== id));
+      const uid = session?.user?.id;
+      if (!uid) return;
+      await supabase.from("meals").delete().eq("id", id).eq("user_id", uid);
+    },
+    [session]
+  );
+
+  const uploadMealPhoto = useCallback(
+    async (file) => {
+      const uid = session?.user?.id;
+      if (!uid || !file) return { error: "not-signed-in" };
+      try {
+        const ext = (file.name?.split(".").pop() || "jpg").toLowerCase();
+        const path = `${uid}/meal-${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("meal-photos")
+          .upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" });
+        if (upErr) return { error: upErr.message };
+        const { data } = supabase.storage.from("meal-photos").getPublicUrl(path);
+        return { url: data?.publicUrl ?? null };
+      } catch (e) {
+        return { error: e?.message || "upload-failed" };
+      }
+    },
+    [session]
+  );
+
   const updateWeight = useCallback(
     async (weight) => {
       const uid = session?.user?.id;
@@ -485,6 +573,7 @@ export function AppStateProvider({ children }) {
         supabase.from("workouts").delete().eq("user_id", uid),
         supabase.from("weight_logs").delete().eq("user_id", uid),
         supabase.from("runs").delete().eq("user_id", uid),
+        supabase.from("meals").delete().eq("user_id", uid),
         supabase
           .from("profiles")
           .update({ onboarded: false, last_checkin: null })
@@ -493,6 +582,7 @@ export function AppStateProvider({ children }) {
     }
     setWorkouts([]);
     setRuns([]);
+    setMeals([]);
     setWeightLog([]);
     setLastCheckin(null);
     setProfile((p) => ({ ...p, onboarded: false }));
@@ -515,6 +605,7 @@ export function AppStateProvider({ children }) {
       profile,
       workouts,
       runs,
+      meals,
       weightLog,
       lastCheckin,
       signUp,
@@ -525,6 +616,9 @@ export function AppStateProvider({ children }) {
       uploadAvatar,
       addWorkout,
       addRun,
+      addMeal,
+      deleteMeal,
+      uploadMealPhoto,
       updateWeight,
       dismissCheckin,
       resetAll,
@@ -536,6 +630,7 @@ export function AppStateProvider({ children }) {
       profile,
       workouts,
       runs,
+      meals,
       weightLog,
       lastCheckin,
       signUp,
@@ -546,6 +641,9 @@ export function AppStateProvider({ children }) {
       uploadAvatar,
       addWorkout,
       addRun,
+      addMeal,
+      deleteMeal,
+      uploadMealPhoto,
       updateWeight,
       dismissCheckin,
       resetAll,
