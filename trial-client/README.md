@@ -1,4 +1,4 @@
-# FitBridge — client
+# FitBridge 
 
 Train smart. Move well. FitBridge is a browser-based fitness app that counts
 your reps and checks your form in real time with on-device pose tracking, then
