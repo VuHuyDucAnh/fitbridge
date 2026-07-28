@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
+import HScrollbar from "../ui/HScrollbar";
 import { useI18n } from "../../i18n/LanguageContext";
 
 // Local calendar day (YYYY-MM-DD) — must match AppState.dateKey so the cells
@@ -19,6 +20,7 @@ function colorFor(count) {
 
 export default function ContributionGraph({ contribution }) {
   const { t, locale } = useI18n();
+  const scrollRef = useRef(null);
 
   const { columns, total, monthLabels } = useMemo(() => {
     const today = new Date();
@@ -53,35 +55,47 @@ export default function ContributionGraph({ contribution }) {
     return { columns: cols, total, monthLabels };
   }, [contribution, locale]);
 
+  // Open on the most recent weeks — the left edge is a year ago and nobody
+  // wants to pan across 12 months to find today.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [columns]);
+
   return (
-    <div>
+    <div className="min-w-0">
       <p className="mb-3 text-[0.85rem] text-ink-3">{t("profile.contributionSubtitle", { n: total })}</p>
-      <div className="overflow-x-auto pb-2 hide-scrollbar">
-        <div className="inline-block">
-          {/* month row */}
-          <div className="mb-1 flex gap-[3px] pl-[2px]">
-            {monthLabels.map((m, i) => (
-              <div key={i} className="w-[13px] text-[0.6rem] text-ink-3">
-                {m ? <span className="relative -left-px whitespace-nowrap">{m.label}</span> : ""}
-              </div>
-            ))}
-          </div>
-          {/* grid */}
-          <div className="flex gap-[3px]">
-            {columns.map((col, ci) => (
-              <div key={ci} className="flex flex-col gap-[3px]">
-                {col.map((day) => (
-                  <span
-                    key={day.key}
-                    title={`${day.date.toLocaleDateString(locale)} · ${day.count} ${t("profile.workouts").toLowerCase()}`}
-                    className="h-[13px] w-[13px] rounded-[3px]"
-                    style={{ background: colorFor(day.count) }}
-                  />
-                ))}
-              </div>
-            ))}
+      {/* The grid is ~53 weeks wide and will not fit a phone — show a slice and
+          let it be panned rather than blowing out the card. */}
+      <div>
+        <div ref={scrollRef} className="scroll-x">
+          <div className="inline-block">
+            {/* month row */}
+            <div className="mb-1 flex gap-[3px] pl-[2px]">
+              {monthLabels.map((m, i) => (
+                <div key={i} className="w-[13px] text-[0.6rem] text-ink-3">
+                  {m ? <span className="relative -left-px whitespace-nowrap">{m.label}</span> : ""}
+                </div>
+              ))}
+            </div>
+            {/* grid */}
+            <div className="flex gap-[3px]">
+              {columns.map((col, ci) => (
+                <div key={ci} className="flex flex-col gap-[3px]">
+                  {col.map((day) => (
+                    <span
+                      key={day.key}
+                      title={`${day.date.toLocaleDateString(locale)} · ${day.count} ${t("profile.workouts").toLowerCase()}`}
+                      className="h-[13px] w-[13px] rounded-[3px]"
+                      style={{ background: colorFor(day.count) }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+        <HScrollbar targetRef={scrollRef} label={t("profile.contributionTitle")} className="mt-2.5" />
       </div>
       <div className="mt-3 flex items-center gap-1.5 text-[0.72rem] text-ink-3">
         <span>{t("profile.less")}</span>

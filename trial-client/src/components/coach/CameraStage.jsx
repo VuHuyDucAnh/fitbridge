@@ -23,6 +23,8 @@ const TRACK_TEXT = {
   "—": { en: "Ready", vi: "Sẵn sàng" },
 };
 
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
 export default function CameraStage({ exercise, beastMode, onEnd }) {
   const { t, locale } = useI18n();
   const faults = useRef({ depth: 0, hips: 0, elbows: 0 });
@@ -37,8 +39,15 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     },
   });
 
-  const { videoRef, canvasRef, status, reps, stage, angle, tracking, cue, holdSeconds, elapsed } = pose;
+  const { videoRef, canvasRef, status, reps, stage, angle, tracking, cue, holdSeconds, elapsed, frameSize } = pose;
   const running = status === "running";
+
+  // Let the stage take the camera's own shape instead of forcing 16:9 — a phone
+  // hands back a portrait stream and squeezing it into a landscape box is what
+  // flattened the picture. Clamped so an extreme ratio can't blow up the layout.
+  const stageStyle = frameSize
+    ? { aspectRatio: `${clamp(frameSize.w / frameSize.h, 9 / 16, 16 / 9)}` }
+    : undefined;
 
   const end = () => {
     const snap = pose.stop();
@@ -51,13 +60,16 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
 
   return (
     <div>
-      <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-line-strong bg-[#0d0d0d]">
+      <div
+        className="relative aspect-[3/4] max-h-[68vh] w-full overflow-hidden rounded-3xl border border-line-strong bg-[#0d0d0d] sm:aspect-video"
+        style={stageStyle}
+      >
         <video ref={videoRef} className="hidden" playsInline muted />
         <canvas
           ref={canvasRef}
           width={1280}
           height={720}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
           style={{ transform: "scaleX(-1)", display: running ? "block" : "none" }}
         />
 

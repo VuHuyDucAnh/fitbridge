@@ -131,6 +131,9 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
     reps: 0, stage: m.current.stage, angle: 0, tracking: "—",
     cue: null, quality: null, holdSeconds: 0, elapsed: 0,
   });
+  // Real width/height of the camera frames. Phones hand back a portrait stream
+  // (e.g. 720×1280), so the stage can't assume 16:9 — see setFrameSize below.
+  const [frameSize, setFrameSize] = useState(null);
   const frameRef = useRef(0);
 
   const pushLive = useCallback(() => {
@@ -152,10 +155,24 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
     (results) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+
+      // Match the backing store to the frame we actually got. Blitting a
+      // portrait phone stream into a hardcoded 1280×720 canvas is what squashed
+      // the picture; at 1:1 the frame keeps its own proportions and the CSS
+      // object-fit does the rest.
+      const src = results.image;
+      const sw = src?.width || src?.videoWidth || videoRef.current?.videoWidth || 0;
+      const sh = src?.height || src?.videoHeight || videoRef.current?.videoHeight || 0;
+      if (sw && sh && (canvas.width !== sw || canvas.height !== sh)) {
+        canvas.width = sw;
+        canvas.height = sh;
+        setFrameSize({ w: sw, h: sh });
+      }
+
       const ctx = canvas.getContext("2d");
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
 
       const lm = results.poseLandmarks;
       const s = m.current;
@@ -255,7 +272,7 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
 
   useEffect(() => () => stop(), []); // cleanup on unmount
 
-  return { videoRef, canvasRef, status, error, ...live, start, stop };
+  return { videoRef, canvasRef, status, error, frameSize, ...live, start, stop };
 }
 
 function now() {

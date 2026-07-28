@@ -281,6 +281,22 @@
     scrollbar-width: none;
   }
 
+  /* Horizontal pan container for content that cannot fit (contribution graph,
+     wide tables). The native bar is suppressed because <HScrollbar> renders the
+     visible one: platform bars are overlay-and-fading on mobile but reserve
+     layout space on desktop, so relying on them means an affordance that is
+     inconsistent where it matters most. */
+  .scroll-x {
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Scroll-reveal primitive (paired with IntersectionObserver) */
   .reveal {
     opacity: 0;
