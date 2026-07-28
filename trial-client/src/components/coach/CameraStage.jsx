@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer } from "lucide-react";
+import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star } from "lucide-react";
 import Button from "../ui/Button";
 import StatusChip from "../ui/StatusChip";
 import CoachBubble from "./CoachBubble";
@@ -25,6 +25,30 @@ const TRACK_TEXT = {
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
+const JOINT_ROWS = ["shoulder", "elbow", "bodyLine", "hip", "knee", "ankle"];
+
+function HudPanel({ title, children, className = "" }) {
+  return (
+    <div className={`rounded-xl border border-accent/25 bg-black/55 px-2.5 py-2 backdrop-blur ${className}`}>
+      <div className="mb-1 text-[0.58rem] font-bold uppercase tracking-wider text-accent">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Stars({ value }) {
+  return (
+    <div className="mt-1 flex gap-0.5" aria-hidden="true">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <Star
+          key={i}
+          className={`h-2.5 w-2.5 ${i < Math.round(value) ? "fill-accent text-accent" : "text-white/25"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function CameraStage({ exercise, beastMode, onEnd }) {
   const { t, locale } = useI18n();
   const faults = useRef({ depth: 0, hips: 0, elbows: 0 });
@@ -39,7 +63,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     },
   });
 
-  const { videoRef, canvasRef, status, reps, stage, angle, tracking, cue, holdSeconds, elapsed, frameSize } = pose;
+  const { videoRef, canvasRef, status, reps, stage, angle, tracking, cue, holdSeconds, elapsed, frameSize, joints, checks, quality } = pose;
   const running = status === "running";
 
   // Let the stage take the camera's own shape instead of forcing 16:9 — a phone
@@ -158,6 +182,59 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
             <div className="absolute right-4 bottom-4 glass rounded-full px-3 py-1 text-[0.78rem] font-semibold text-ink">
               {formatDuration(elapsed)}
             </div>
+
+            {/* Analysis HUD — desktop only. On a phone the camera box is barely
+                wider than the person, so these panels would cover the very form
+                they are describing. */}
+            <div className="pointer-events-none absolute left-4 top-[6.5rem] hidden w-[10.5rem] xl:block">
+              <HudPanel title={t("coach.jointsTitle")}>
+                <ul className="space-y-0.5">
+                  {JOINT_ROWS.map((k) => (
+                    <li key={k} className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-[0.62rem] text-white/55">{t(`coach.angle.${k}`)}</span>
+                      <span className="font-mono text-[0.82rem] font-bold text-accent">
+                        {joints?.[k] != null ? `${joints[k]}°` : "—"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </HudPanel>
+
+              {quality != null && (
+                <HudPanel title={t("coach.overallTitle")} className="mt-2">
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-display text-2xl font-extrabold leading-none text-white">
+                      {(quality * 10).toFixed(1)}
+                    </span>
+                    <span className="text-[0.66rem] font-semibold text-white/45">/10</span>
+                  </div>
+                  <Stars value={quality * 5} />
+                </HudPanel>
+              )}
+            </div>
+
+            {checks?.length > 0 && (
+              <div className="pointer-events-none absolute right-4 top-[6.5rem] hidden w-[12.5rem] xl:block">
+                <HudPanel title={t("coach.formTitle")}>
+                  <ul className="space-y-1">
+                    {checks.map(({ key, ok }) => (
+                      <li key={key} className="flex items-start gap-1.5">
+                        {ok === null ? (
+                          <MinusCircle className="mt-px h-3 w-3 shrink-0 text-white/35" />
+                        ) : ok ? (
+                          <CheckCircle2 className="mt-px h-3 w-3 shrink-0 text-success" />
+                        ) : (
+                          <AlertTriangle className="mt-px h-3 w-3 shrink-0 text-warning" />
+                        )}
+                        <span className={`text-[0.62rem] leading-snug ${ok === false ? "text-warning" : "text-white/70"}`}>
+                          {t(`coach.check.${key}`)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </HudPanel>
+              </div>
+            )}
 
             <CoachBubble enabled={beastMode} nudge={nudge} />
           </>

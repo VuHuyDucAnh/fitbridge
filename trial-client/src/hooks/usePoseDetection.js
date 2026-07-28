@@ -28,8 +28,10 @@ function loadMediaPipe() {
 
 /* ---------- geometry ---------- */
 const L = {
+  nose: 0,
   lShoulder: 11, rShoulder: 12, lElbow: 13, rElbow: 14, lWrist: 15, rWrist: 16,
   lHip: 23, rHip: 24, lKnee: 25, rKnee: 26, lAnkle: 27, rAnkle: 28,
+  lFoot: 31, rFoot: 32,
 };
 
 /* ---------- strictness tuning ----------
@@ -66,6 +68,104 @@ function torsoTilt(lm) {
   if (Math.hypot(dx, dy) < 0.06) return null; // too small to trust
   const deg = Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
   return deg > 90 ? 180 - deg : deg;
+}
+
+/* ---------- live readouts for the on-screen HUD ----------
+   The rep counter only needs one joint; the desktop overlay shows the whole
+   chain, so measure every joint on whichever side the camera can see best. */
+function bestSide(lm) {
+  const l = vis(lm, L.lShoulder, L.lHip, L.lKnee, L.lElbow);
+  const r = vis(lm, L.rShoulder, L.rHip, L.rKnee, L.rElbow);
+  return l >= r ? "l" : "r";
+}
+
+export function measureJoints(lm) {
+  const s = bestSide(lm);
+  const P = s === "l"
+    ? { sh: L.lShoulder, el: L.lElbow, wr: L.lWrist, hp: L.lHip, kn: L.lKnee, an: L.lAnkle, ft: L.lFoot }
+    : { sh: L.rShoulder, el: L.rElbow, wr: L.rWrist, hp: L.rHip, kn: L.rKnee, an: L.rAnkle, ft: L.rFoot };
+  // a joint the camera cannot see is reported as null, never as a wrong number
+  const A = (a, b, c) => (vis(lm, a, b, c) < 0.35 ? null : Math.round(angleAt(lm[a], lm[b], lm[c])));
+  return {
+    shoulder: A(P.el, P.sh, P.hp),
+    elbow: A(P.sh, P.el, P.wr),
+    hip: A(P.sh, P.hp, P.kn),
+    knee: A(P.hp, P.kn, P.an),
+    ankle: A(P.kn, P.an, P.ft),
+    bodyLine: A(P.sh, P.hp, P.an),
+  };
+}
+
+// How far the elbow sits from the shoulder->wrist line, as a fraction of torso
+// width — scale-free, so it reads the same near or far from the camera.
+function elbowFlare(lm) {
+  const w = Math.abs(lm[L.lShoulder].x - lm[L.rShoulder].x) || 0.001;
+  const side = bestSide(lm);
+  const sh = lm[side === "l" ? L.lShoulder : L.rShoulder];
+  const el = lm[side === "l" ? L.lElbow : L.rElbow];
+  return Math.abs(el.x - sh.x) / w;
+}
+
+function headLine(lm) {
+  if (vis(lm, L.nose) < 0.3) return null;
+  const side = bestSide(lm);
+  return angleAt(lm[L.nose], lm[side === "l" ? L.lShoulder : L.rShoulder], lm[side === "l" ? L.lHip : L.rHip]);
+}
+
+/* Per-exercise form checklist. Each entry resolves to true (good) / false
+   (needs work) / null (cannot tell yet) so the UI can stay honest about what it
+   can actually see. Keyed by detection.formKey, so lunge reuses squat. */
+const FORM_CHECKS = {
+  pushup: [
+    { key: "straightBody", test: (j) => (j.bodyLine == null ? null : j.bodyLine >= 158) },
+    { key: "elbowTuck", test: (j, lm) => elbowFlare(lm) < 0.55 },
+    { key: "depth", test: (j, lm, s) => (s.cycleMin > 179 ? null : s.cycleMin <= 105) },
+    { key: "headNeutral", test: (j, lm) => { const h = headLine(lm); return h == null ? null : h >= 115; } },
+  ],
+  plank: [
+    { key: "straightBody", test: (j) => (j.bodyLine == null ? null : j.bodyLine >= 165) },
+    { key: "hipLevel", test: (j) => (j.hip == null ? null : j.hip >= 160) },
+    { key: "elbowStack", test: (j, lm) => elbowFlare(lm) < 0.5 },
+    { key: "headNeutral", test: (j, lm) => { const h = headLine(lm); return h == null ? null : h >= 115; } },
+  ],
+  squat: [
+    { key: "depth", test: (j, lm, s) => (s.cycleMin > 179 ? null : s.cycleMin <= 100) },
+    { key: "backNeutral", test: (j, lm) => { const h = headLine(lm); return h == null ? null : h >= 140; } },
+    { key: "kneeTrack", test: (j, lm) => {
+        const side = bestSide(lm);
+        const kn = lm[side === "l" ? L.lKnee : L.rKnee];
+        const an = lm[side === "l" ? L.lAnkle : L.rAnkle];
+        const w = Math.abs(lm[L.lHip].x - lm[L.rHip].x) || 0.001;
+        return Math.abs(kn.x - an.x) / w < 1.1;
+      } },
+    { key: "chestUp", test: (j) => (j.hip == null ? null : j.hip >= 45) },
+  ],
+  curl: [
+    { key: "armPinned", test: (j, lm) => Math.abs(lm[L.lElbow].x - lm[L.lShoulder].x) < 0.14 },
+    { key: "fullExtension", test: (j, lm, s) => (s.cycleMax < 1 ? null : s.cycleMax >= 150) },
+    { key: "fullFlexion", test: (j, lm, s) => (s.cycleMin > 179 ? null : s.cycleMin <= 60) },
+    { key: "noSwing", test: (j) => (j.bodyLine == null ? null : j.bodyLine >= 160) },
+  ],
+  pullup: [
+    { key: "deadHang", test: (j, lm, s) => (s.cycleMax < 1 ? null : s.cycleMax >= 150) },
+    { key: "chinOverBar", test: (j, lm, s) => (s.cycleMin > 179 ? null : s.cycleMin <= 80) },
+    { key: "noKip", test: (j) => (j.bodyLine == null ? null : j.bodyLine >= 155) },
+    { key: "legsControlled", test: (j) => (j.knee == null ? null : j.knee >= 130) },
+  ],
+};
+
+export function runChecks(lm, cfg, joints, s) {
+  const list = FORM_CHECKS[cfg.formKey] || [];
+  // If the camera cannot see the torso, every check is unknown. Some tests read
+  // machine state rather than landmarks and would otherwise happily report
+  // "good form" at an empty room.
+  const seen = vis(lm, L.lShoulder, L.rShoulder, L.lHip, L.rHip) >= MIN_TORSO_VIS;
+  return list.map(({ key, test }) => {
+    if (!seen) return { key, ok: null };
+    let ok = null;
+    try { ok = test(joints, lm, s); } catch { ok = null; }
+    return { key, ok };
+  });
 }
 
 /* Spatial gate: the whole-body posture must match the selected exercise, or NO
@@ -130,6 +230,7 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
   const [live, setLive] = useState({
     reps: 0, stage: m.current.stage, angle: 0, tracking: "—",
     cue: null, quality: null, holdSeconds: 0, elapsed: 0,
+    joints: null, checks: [],
   });
   // Real width/height of the camera frames. Phones hand back a portrait stream
   // (e.g. 720×1280), so the stage can't assume 16:9 — see setFrameSize below.
@@ -147,6 +248,8 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
       quality: s.qualityCount ? s.qualitySum / s.qualityCount : null,
       holdSeconds: s.holdMs / 1000,
       elapsed: s.startedAt ? (performance.now() - s.startedAt) / 1000 : 0,
+      joints: s.joints,
+      checks: s.checks,
     });
   }, []);
 
@@ -198,6 +301,21 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
         analyzeHold(lm, s, cfg, now, onFault);
       } else {
         analyzeReps(lm, s, cfg, ctx, canvas, accentRef.current, onRep, onFault);
+      }
+
+      // Full joint chain + form checklist for the desktop overlay. Cheap enough
+      // to run per frame; it is only published on the throttled pushLive below.
+      s.joints = measureJoints(lm);
+      s.checks = runChecks(lm, cfg, s.joints, s);
+
+      // Running tallies the end-of-session report grades against.
+      s.frames++;
+      if (s.tracking !== "searching" && s.tracking !== "adjust") s.framesTracked++;
+      for (const c of s.checks) {
+        if (c.ok === null) continue;
+        const e = (s.checkStats[c.key] ||= { pass: 0, total: 0 });
+        e.total++;
+        if (c.ok) e.pass++;
       }
 
       if (frameRef.current % 4 === 0) pushLive();
@@ -267,6 +385,7 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
       formScore: s.qualityCount ? +(s.qualitySum / s.qualityCount * 10).toFixed(1) : null,
       holdSeconds: s.holdMs / 1000,
       elapsed: s.startedAt ? (performance.now() - s.startedAt) / 1000 : 0,
+      metrics: summarise(s),
     };
   }, [pushLive]);
 
@@ -277,6 +396,39 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
 
 function now() {
   return performance.now();
+}
+
+const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+// Coefficient of variation — spread relative to the mean, so it compares across
+// exercises with very different angle ranges and rep speeds.
+function cv(a) {
+  const mu = mean(a);
+  if (!mu) return null;
+  const v = mean(a.map((x) => (x - mu) ** 2));
+  return Math.sqrt(v) / mu;
+}
+
+/** Condense the per-rep log into the numbers the report grades against. */
+function summarise(s) {
+  const roms = s.repLog.map((r) => r.rom).filter((r) => r > 0);
+  const gaps = s.repLog.map((r) => r.gapMs).filter((g) => g != null && g > 0);
+  const checks = {};
+  for (const [k, e] of Object.entries(s.checkStats)) {
+    if (e.total >= 5) checks[k] = e.pass / e.total;
+  }
+  return {
+    reps: s.reps,
+    romAvg: mean(roms),
+    romMin: roms.length ? Math.min(...roms) : null,
+    romMax: roms.length ? Math.max(...roms) : null,
+    romCv: roms.length >= 3 ? cv(roms) : null,
+    deepestAngle: s.repLog.length ? Math.min(...s.repLog.map((r) => r.minAngle)) : null,
+    highestAngle: s.repLog.length ? Math.max(...s.repLog.map((r) => r.maxAngle)) : null,
+    tempoAvgSec: gaps.length ? mean(gaps) / 1000 : null,
+    tempoCv: gaps.length >= 3 ? cv(gaps) : null,
+    trackedRatio: s.frames ? s.framesTracked / s.frames : null,
+    checks,
+  };
 }
 
 function freshMachine() {
@@ -298,6 +450,15 @@ function freshMachine() {
     cue: null,
     tracking: "—",
     angle: 0,
+    joints: null,
+    checks: [],
+    // Per-rep log + frame tallies. The report grades depth, tempo and
+    // consistency, and none of that can be reconstructed from a single
+    // end-of-session number.
+    repLog: [],
+    frames: 0,
+    framesTracked: 0,
+    checkStats: {},
     startedAt: performance.now(),
   };
 }
@@ -393,6 +554,13 @@ function analyzeReps(lm, s, cfg, ctx, canvas, accent, onRep, onFault) {
 function countRep(s, cfg, onRep, onFault, nowTs) {
   s.reps += 1;
   const rom = s.cycleMax - s.cycleMin;
+  // Capture before lastRepTs moves — the gap is this rep's tempo.
+  s.repLog.push({
+    rom,
+    minAngle: s.cycleMin,
+    maxAngle: s.cycleMax,
+    gapMs: s.lastRepTs ? nowTs - s.lastRepTs : null,
+  });
   const target = Math.abs(cfg.extend - cfg.flex);
   let quality = Math.max(0.4, Math.min(1, rom / (target * 0.9)));
   // Depth check: did we truly reach the flexed extreme?

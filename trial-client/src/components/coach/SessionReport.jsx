@@ -5,6 +5,9 @@ import Reveal from "../ui/Reveal";
 import { formatDuration } from "../../lib/fitness";
 import { useI18n } from "../../i18n/LanguageContext";
 
+const bandText = (s) => (s >= 80 ? "text-success" : s >= 60 ? "text-accent-strong" : "text-warning");
+const bandBg = (s) => (s >= 80 ? "bg-success" : s >= 60 ? "bg-accent" : "bg-warning");
+
 export default function SessionReport({ report, exercise, onSave, onAgain, saved }) {
   const { t, locale } = useI18n();
   const isHold = exercise.detection.mode === "hold";
@@ -63,6 +66,34 @@ export default function SessionReport({ report, exercise, onSave, onAgain, saved
         <Reveal delay={120}><StatTile icon={<Layers className="h-4 w-4" />} label={t("coach.completedSets")} value={report.sets} /></Reveal>
         <Reveal delay={180}><StatTile icon={<Star className="h-4 w-4" />} label={t("coach.formScore")} value={report.formScore} unit="/10" /></Reveal>
       </div>
+
+      {/* Score breakdown — the rubric behind the single form score */}
+      {report.breakdown?.length > 0 && (
+        <Reveal>
+          <div className="card p-6">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-bold">{t("coach.breakdownTitle")}</h3>
+              <span className="text-[0.82rem] text-ink-3">{t("coach.breakdownHint")}</span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {report.breakdown.map((d) => (
+                <div key={d.key}>
+                  <div className="mb-1 flex items-baseline justify-between gap-2">
+                    <span className="text-[0.85rem] text-ink-2">{d.label}</span>
+                    <span className={`font-mono text-[0.85rem] font-bold ${bandText(d.score)}`}>{d.score}</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken">
+                    <div
+                      className={`h-full rounded-full ${bandBg(d.score)}`}
+                      style={{ width: `${Math.max(3, d.score)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+      )}
 
       {/* Good / Fix */}
       <div className="grid gap-4 md:grid-cols-2">
