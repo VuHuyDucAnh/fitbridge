@@ -3,73 +3,105 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Rotate3d } from "lucide-react";
 import { useI18n } from "../../i18n/LanguageContext";
+import { repDrive, drivenAt, repDriveKinematics, solveTwoBone } from "../../lib/motion3d";
 
 /* An anatomical 3D figure that performs the selected exercise with textbook
-   form, orbitable by dragging. Joint angles are measured live off the rig's
-   world positions (real geometry, never hard-coded numbers) and shown beside
-   the model, the way a coach would break the movement down.
+   form, orbitable by dragging.
+
+   Motion is driven by lib/motion3d: a phased rep curve (slow gravity-loaded
+   descent → loaded pause → explosive drive → overshoot and damped settle),
+   per-joint time lag so the body moves as a kinematic chain from the pelvis
+   outward, and two-bone IK that pins the planted foot / hand so the pelvis can
+   travel on an arc without the contacts sliding.
 
    Form targets come from published technique guidance:
-     push-up  — one straight line ankle→head, elbows tucked ~45° (not flared to
-                90°), lower to ~90° elbow, hands stacked under shoulders
-     squat    — break parallel: ~90-100° knee flexion, hips below knee, torso
-                lean ~35-40°, knees tracking over toes
-     curl     — upper arm pinned vertical, elbow travels full extension→flexion
-     pull-up  — dead hang with near-straight elbows → chin over bar
-     lunge    — ~90° at front hip, front knee and back knee, knee over ankle
-     plank    — elbows stacked under shoulders, hip line straight (180°)        */
+     push-up  — one straight line ankle→head, elbows tucked (not flared), lower
+                to ~90° elbow, hands stacked under the shoulders
+     squat    — break parallel (hips below knee), neutral spine, hips travel
+                back before they travel down, knees tracking over the toes
+     curl     — upper arm pinned vertical, full extension → full flexion
+     pull-up  — dead hang with near-straight elbows → chin over the bar
+     lunge    — ~90° at the front hip, front knee and back knee, knee over ankle
+     plank    — elbows stacked under the shoulders, hip line straight          */
 
 const deg = (d) => (d * Math.PI) / 180;
-
-/* ---------------- pose library (degrees, sagittal plane) ----------------
-   Positive knee/elbow = flexion. Poses are authored as readable degrees and
-   converted once at load.                                                   */
-const POSES = {
-  // Torso rotated 90° so the chest faces the floor; contact = hands + toes.
-  pushup: {
-    A: { root: { r: [90, 0, 0] }, shoulder: 90, elbow: 4, hip: 0, knee: 2, ankle: 0, head: -32, spine: 0 },
-    B: { root: { r: [90, 0, 0] }, shoulder: 52, elbow: 88, hip: 0, knee: 2, ankle: 0, head: -26, spine: 0 },
-    armSpread: 9, anchor: "ground", cam: { target: [0, 0.42, 0], dist: 3.0 },
-  },
-  // Forearm plank: upper arm straight down, forearm flat along the floor.
-  plank: {
-    A: { root: { r: [90, 0, 0] }, shoulder: 90, elbow: 90, hip: 0, knee: 2, ankle: 0, head: -30, spine: 0 },
-    B: { root: { r: [90, 0, 0] }, shoulder: 88, elbow: 90, hip: 0, knee: 2, ankle: 0, head: -30, spine: 0 },
-    armSpread: 8, anchor: "ground", hold: true, cam: { target: [0, 0.4, 0], dist: 3.0 },
-  },
-  // Break parallel: ~100° knee flexion, hips below knee, torso lean ~35°.
-  squat: {
-    A: { root: { r: [0, 0, 0] }, shoulder: 5, elbow: 5, hip: 0, knee: 0, head: 0, spine: 0 },
-    B: { root: { r: [0, 0, 0] }, shoulder: 74, elbow: 18, hip: 96, knee: 102, head: -12, spine: 26 },
-    armSpread: 6, footFlat: true, anchor: "ground", cam: { target: [0, 0.82, 0], dist: 3.9 },
-  },
-  // Upper arm pinned vertical; only the elbow travels.
-  "bicep-curl": {
-    A: { root: { r: [0, 0, 0] }, shoulder: 2, elbow: 4, hip: 0, knee: 0, head: 0, spine: 0 },
-    B: { root: { r: [0, 0, 0] }, shoulder: 6, elbow: 140, hip: 0, knee: 0, head: 0, spine: 0 },
-    armSpread: 5, footFlat: true, anchor: "ground", cam: { target: [0, 0.88, 0], dist: 3.8 },
-  },
-  // Dead hang (arms overhead, elbows straight) → chin over bar (elbow ~40°).
-  "pull-up": {
-    A: { root: { r: [0, 0, 0] }, shoulder: 172, elbow: 6, hip: -8, knee: 32, head: 0, spine: 0 },
-    B: { root: { r: [0, 0, 0] }, shoulder: 34, elbow: 146, hip: -8, knee: 32, head: 4, spine: -4 },
-    armSpread: 13, anchor: "bar", cam: { target: [0, 0.72, 0], dist: 4.0 },
-  },
-  // ~90° at front hip, front knee and back knee; front knee over the ankle.
-  lunge: {
-    A: { root: { r: [0, 0, 0] }, shoulder: 5, elbow: 5, head: 0, spine: 0, split: 0 },
-    B: { root: { r: [0, 0, 0] }, shoulder: 10, elbow: 12, head: 0, spine: 8, split: 1 },
-    armSpread: 6, anchor: "ground", cam: { target: [0, 0.78, 0], dist: 3.9 },
-    splitPose: { frontHip: 88, frontKnee: 90, backHip: -26, backKnee: 92, backAnkle: -46 },
-  },
-};
-
-const BAR_Y = 1.35;
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 const BODY_COLOR = 0x7c7f88;
 const ACCENT = 0xff6a1f;
+const BAR_Y = 1.35;
 
-/* ---------------- geometry helpers ---------------- */
+// Segment lengths — the IK solver needs these to match the built mesh.
+const THIGH = 0.42, SHANK = 0.42, UPPER_ARM = 0.29, FOREARM = 0.27;
+
+/* Per-joint lag in 60fps frames. The pelvis leads; hands and feet trail by the
+   2–4 frames that give a body its follow-through. */
+const LAG = { hips: 0, spine: 1.5, chest: 2.5, head: 3.5, shoulder: 2, elbow: 3.5, wrist: 4.5 };
+
+/* ---------------- motion specs ---------------- */
+const MOTION = {
+  squat: {
+    kind: "grounded",
+    period: 3000,
+    // Hips travel back and down on an arc — "sit back", not "drop straight".
+    hips: { drop: 0.34, back: 0.17, lead: 2.5 },
+    spine: [3, 30], head: [0, -10],
+    arms: { shoulder: [6, 74], elbow: [5, 20] },
+    legBend: 1,
+    cam: { target: [0, 0.82, 0], dist: 3.9 },
+  },
+  lunge: {
+    kind: "grounded",
+    period: 3100,
+    hips: { drop: 0.30, back: 0.02, lead: 2 },
+    spine: [3, 10], head: [0, -4],
+    arms: { shoulder: [5, 12], elbow: [5, 14] },
+    legBend: 1,
+    stance: { front: 0.34, back: -0.36, backLift: 0.17 },
+    cam: { target: [0, 0.78, 0], dist: 3.9 },
+  },
+  "bicep-curl": {
+    kind: "grounded",
+    period: 2500,
+    hips: { drop: 0.012, back: 0, lead: 0 }, // tiny bodyweight shift only
+    spine: [2, -3], head: [0, 2],
+    arms: { shoulder: [2, 7], elbow: [4, 140] },
+    legBend: 1,
+    cam: { target: [0, 0.88, 0], dist: 3.8 },
+  },
+  pushup: {
+    kind: "prone",
+    period: 2800,
+    baseRot: 90,
+    pivot: 14,            // the body rotates about the toes as it lowers
+    spine: [0, 1.5], head: [-30, -22],
+    armBend: -1,
+    cam: { target: [0, 0.42, 0], dist: 3.0 },
+  },
+  plank: {
+    kind: "prone",
+    period: 4200,
+    baseRot: 90,
+    pivot: 1.6,           // a brace, not a rep: breathing only
+    spine: [0, 0.8], head: [-30, -28],
+    armBend: -1,
+    hold: true,
+    fkArms: { shoulder: 90, elbow: 90 },
+    cam: { target: [0, 0.4, 0], dist: 3.0 },
+  },
+  "pull-up": {
+    kind: "hang",
+    period: 3200,
+    lift: 0.32,
+    spine: [0, -5], head: [0, 5],
+    legs: { hip: [-8, -12], knee: [30, 34] },
+    armBend: -1,
+    cam: { target: [0, 0.72, 0], dist: 4.0 },
+  },
+};
+
+/* ---------------- geometry ---------------- */
 
 // A tapered "muscle" segment: lathe profile that swells at the belly.
 function muscleSegment(len, rTop, rMid, rBot, material) {
@@ -80,8 +112,7 @@ function muscleSegment(len, rTop, rMid, rBot, material) {
     const r = (1 - t) * (1 - t) * rTop + 2 * (1 - t) * t * rMid + t * t * rBot;
     pts.push(new THREE.Vector2(Math.max(0.012, r), -t * len));
   }
-  const mesh = new THREE.Mesh(new THREE.LatheGeometry(pts, 24), material);
-  return mesh;
+  return new THREE.Mesh(new THREE.LatheGeometry(pts, 24), material);
 }
 
 function sphere(r, material) {
@@ -89,20 +120,11 @@ function sphere(r, material) {
 }
 
 function buildRig(material, jointMat) {
-  const joints = {};
   const nodes = {};
   const root = new THREE.Group();
 
-  const markers = [];
-  const marker = (parent, key, r = 0.032) => {
-    const m = sphere(r, jointMat);
-    parent.add(m);
-    markers.push(m);
-    joints[key] = parent;
-    return m;
-  };
+  const marker = (parent, r) => parent.add(sphere(r, jointMat));
 
-  // ---- pelvis / hips ----
   const hips = new THREE.Group();
   root.add(hips);
   const pelvis = muscleSegment(0.16, 0.14, 0.145, 0.125, material);
@@ -111,17 +133,14 @@ function buildRig(material, jointMat) {
   hips.add(pelvis);
   nodes.hip = hips;
 
-  // ---- spine / torso ----
   const spine = new THREE.Group();
   spine.position.set(0, 0.02, 0);
   hips.add(spine);
   nodes.spine = spine;
-  // torso swells at the ribcage and narrows at the waist
   const torso = muscleSegment(0.5, 0.185, 0.135, 0.128, material);
   torso.position.y = 0.5;
   torso.scale.z = 0.68;
   spine.add(torso);
-  // lat / shoulder yoke
   const yoke = sphere(0.15, material);
   yoke.scale.set(1.32, 0.62, 0.72);
   yoke.position.y = 0.47;
@@ -132,19 +151,16 @@ function buildRig(material, jointMat) {
   spine.add(chest);
   nodes.chest = chest;
 
-  // ---- neck + head ----
   const head = new THREE.Group();
   head.position.set(0, 0.05, 0);
   chest.add(head);
   nodes.head = head;
-  const neck = muscleSegment(0.09, 0.052, 0.05, 0.055, material);
-  head.add(neck);
+  head.add(muscleSegment(0.09, 0.052, 0.05, 0.055, material));
   const skull = sphere(0.115, material);
   skull.scale.set(0.9, 1.05, 0.98);
   skull.position.y = 0.19;
   head.add(skull);
 
-  // ---- arms ----
   for (const side of [-1, 1]) {
     const key = side < 0 ? "L" : "R";
     const sh = new THREE.Group();
@@ -154,20 +170,18 @@ function buildRig(material, jointMat) {
     const delt = sphere(0.072, material);
     delt.scale.set(1, 0.95, 0.95);
     sh.add(delt);
-    marker(sh, "shoulder" + key, 0.034);
-    // upper arm: biceps belly
-    sh.add(muscleSegment(0.29, 0.062, 0.068, 0.048, material));
+    marker(sh, 0.034);
+    sh.add(muscleSegment(UPPER_ARM, 0.062, 0.068, 0.048, material));
 
     const el = new THREE.Group();
-    el.position.set(0, -0.29, 0);
+    el.position.set(0, -UPPER_ARM, 0);
     sh.add(el);
     nodes["elbow" + key] = el;
-    marker(el, "elbow" + key, 0.029);
-    // forearm: tapers to the wrist
-    el.add(muscleSegment(0.27, 0.052, 0.05, 0.032, material));
+    marker(el, 0.029);
+    el.add(muscleSegment(FOREARM, 0.052, 0.05, 0.032, material));
 
     const wr = new THREE.Group();
-    wr.position.set(0, -0.27, 0);
+    wr.position.set(0, -FOREARM, 0);
     el.add(wr);
     nodes["wrist" + key] = wr;
     const hand = sphere(0.052, material);
@@ -176,27 +190,24 @@ function buildRig(material, jointMat) {
     wr.add(hand);
   }
 
-  // ---- legs ----
   for (const side of [-1, 1]) {
     const key = side < 0 ? "L" : "R";
     const th = new THREE.Group();
     th.position.set(0.093 * side, -0.1, 0);
     hips.add(th);
     nodes["thigh" + key] = th;
-    marker(th, "hip" + key, 0.034);
-    // quad: thick at the top, narrowing to the knee
-    th.add(muscleSegment(0.42, 0.098, 0.092, 0.062, material));
+    marker(th, 0.034);
+    th.add(muscleSegment(THIGH, 0.098, 0.092, 0.062, material));
 
     const kn = new THREE.Group();
-    kn.position.set(0, -0.42, 0);
+    kn.position.set(0, -THIGH, 0);
     th.add(kn);
     nodes["knee" + key] = kn;
-    marker(kn, "knee" + key, 0.031);
-    // calf: belly high, tapering to the ankle
-    kn.add(muscleSegment(0.42, 0.072, 0.078, 0.038, material));
+    marker(kn, 0.031);
+    kn.add(muscleSegment(SHANK, 0.072, 0.078, 0.038, material));
 
     const an = new THREE.Group();
-    an.position.set(0, -0.42, 0);
+    an.position.set(0, -SHANK, 0);
     kn.add(an);
     nodes["ankle" + key] = an;
     const foot = muscleSegment(0.19, 0.055, 0.05, 0.032, material);
@@ -205,10 +216,9 @@ function buildRig(material, jointMat) {
     an.add(foot);
   }
 
-  return { root, hips, nodes, markers };
+  return { root, nodes };
 }
 
-/* Curved orange contour lines behind the figure — the "scan field" backdrop. */
 function buildBackdrop() {
   const g = new THREE.Group();
   const mat = new THREE.LineBasicMaterial({ color: ACCENT, transparent: true, opacity: 0.22 });
@@ -224,7 +234,6 @@ function buildBackdrop() {
   return g;
 }
 
-/* Floor grid so the figure is visibly planted, and the pull-up bar. */
 function buildStage(withBar) {
   const g = new THREE.Group();
   const grid = new THREE.GridHelper(4.4, 18, ACCENT, 0x3a3a42);
@@ -243,131 +252,32 @@ function buildStage(withBar) {
   return g;
 }
 
-/* ---------------- pose application ---------------- */
-const lerp = (a, b, t) => a + (b - a) * t;
+/* ---------------- posing ---------------- */
+const _v = new THREE.Vector3();
+const _t = new THREE.Vector3();
 
-/* Rotation conventions (all sagittal, about local X):
-   limbs rest pointing down local -Y.
-     shoulder  +v swings the upper arm FORWARD (+Z), 180 = straight overhead
-     elbow     +v flexes (hand travels forward/up, never behind the body)
-     hip       +v flexes the thigh forward
-     knee      +v flexes (heel toward the glutes)
-   Feet are kept level with the floor automatically when `footFlat` is set, so a
-   squat's shin can lean without the sole clipping through the ground.        */
-function applyPose(rig, conf, t) {
-  const { nodes, root } = rig;
-  const A = conf.A, B = conf.B;
-  const v = (k) => lerp(A[k] ?? 0, B[k] ?? 0, t);
-
-  const spread = conf.armSpread ?? 6;
-  const shoulderRot = deg(-v("shoulder"));
-  const elbowRot = deg(-v("elbow"));
-
-  for (const side of [-1, 1]) {
-    const key = side < 0 ? "L" : "R";
-    nodes["shoulder" + key].rotation.set(shoulderRot, 0, deg(spread * -side));
-    nodes["elbow" + key].rotation.set(elbowRot, 0, 0);
-    nodes["wrist" + key].rotation.set(0, 0, 0);
+// Straight-limb rest pose used to capture where the contacts belong.
+function restPose(nodes, m) {
+  const armTop = m.fkArms ? m.fkArms.shoulder : m.arms ? m.arms.shoulder[0] : 0;
+  const elbowTop = m.fkArms ? m.fkArms.elbow : m.arms ? m.arms.elbow[0] : 0;
+  for (const key of ["L", "R"]) {
+    nodes["shoulder" + key].rotation.set(deg(-armTop), 0, 0);
+    nodes["elbow" + key].rotation.set(deg(-elbowTop), 0, 0);
+    nodes["thigh" + key].rotation.set(0, 0, 0);
+    nodes["knee" + key].rotation.set(0, 0, 0);
+    nodes["ankle" + key].rotation.set(0, 0, 0);
   }
-
-  const setLeg = (key, hipDeg, kneeDeg, ankleDeg) => {
-    const th = deg(-hipDeg);
-    const kn = deg(kneeDeg);
-    nodes["thigh" + key].rotation.set(th, 0, 0);
-    nodes["knee" + key].rotation.set(kn, 0, 0);
-    // keep the sole flat unless an explicit ankle angle is given
-    nodes["ankle" + key].rotation.set(ankleDeg == null ? -(th + kn) : deg(ankleDeg), 0, 0);
-  };
-
-  if (conf.splitPose) {
-    const s = v("split");
-    const sp = conf.splitPose;
-    setLeg("L", sp.frontHip * s, sp.frontKnee * s, null);
-    setLeg("R", sp.backHip * s, sp.backKnee * s, sp.backAnkle * s);
-  } else {
-    const hip = v("hip");
-    const knee = v("knee");
-    const ankle = conf.footFlat ? null : (A.ankle ?? 0) === 0 && (B.ankle ?? 0) === 0 ? 0 : v("ankle");
-    setLeg("L", hip, knee, ankle);
-    setLeg("R", hip, knee, ankle);
-  }
-
-  nodes.spine.rotation.set(deg(v("spine")), 0, 0);
-  nodes.head.rotation.set(deg(v("head")), 0, 0);
-
-  const ra = A.root, rb = B.root;
-  const rp = ra.p || [0, 0, 0], bp = rb.p || [0, 0, 0];
-  root.position.set(lerp(rp[0], bp[0], t), lerp(rp[1], bp[1], t), lerp(rp[2], bp[2], t));
-  root.rotation.set(deg(lerp(ra.r[0], rb.r[0], t)), deg(lerp(ra.r[1], rb.r[1], t)), deg(lerp(ra.r[2], rb.r[2], t)));
+  nodes.spine.rotation.set(0, 0, 0);
+  nodes.head.rotation.set(0, 0, 0);
 }
 
-/* Anchor the figure to the world so it never floats: either the lowest contact
-   point sits on the floor, or the hands stay fixed on the pull-up bar. */
-const _p = new THREE.Vector3();
-const CONTACTS = [
-  ["ankleL", 0.075], ["ankleR", 0.075],
-  ["wristL", 0.07], ["wristR", 0.07],
-  ["elbowL", 0.05], ["elbowR", 0.05],
-  ["kneeL", 0.06], ["kneeR", 0.06],
-];
-
-function anchorFigure(rig, conf) {
-  const { nodes, root } = rig;
-  root.updateMatrixWorld(true);
-  if (conf.anchor === "bar") {
-    let maxY = -Infinity;
-    for (const k of ["wristL", "wristR"]) {
-      nodes[k].getWorldPosition(_p);
-      if (_p.y > maxY) maxY = _p.y;
-    }
-    root.position.y += BAR_Y - maxY;
-  } else {
-    let minY = Infinity;
-    for (const [k, r] of CONTACTS) {
-      nodes[k].getWorldPosition(_p);
-      const y = _p.y - r;
-      if (y < minY) minY = y;
-    }
-    root.position.y -= minY;
-  }
-  root.updateMatrixWorld(true);
-}
-
-/* ---------------- live angle measurement ---------------- */
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
-const _u = new THREE.Vector3(), _w = new THREE.Vector3();
-
-function angleBetween(A, B, C) {
-  A.getWorldPosition(_a);
-  B.getWorldPosition(_b);
-  C.getWorldPosition(_c);
-  _u.subVectors(_a, _b).normalize();
-  _w.subVectors(_c, _b).normalize();
-  return Math.round((Math.acos(Math.min(1, Math.max(-1, _u.dot(_w)))) * 180) / Math.PI);
-}
-
-const ANGLE_ROWS = {
-  pushup: ["shoulder", "elbow", "bodyLine", "hip", "wrist"],
-  plank: ["shoulder", "elbow", "bodyLine", "hip", "knee"],
-  squat: ["knee", "hip", "backAngle", "ankle", "shoulder"],
-  "bicep-curl": ["elbow", "shoulder", "backAngle", "wrist", "hip"],
-  "pull-up": ["elbow", "shoulder", "bodyLine", "hip", "knee"],
-  lunge: ["knee", "hip", "backAngle", "backKnee", "shoulder"],
-};
-
-function measure(nodes, key) {
-  switch (key) {
-    case "elbow": return angleBetween(nodes.shoulderL, nodes.elbowL, nodes.wristL);
-    case "shoulder": return angleBetween(nodes.elbowL, nodes.shoulderL, nodes.hip);
-    case "knee": return angleBetween(nodes.thighL, nodes.kneeL, nodes.ankleL);
-    case "backKnee": return angleBetween(nodes.thighR, nodes.kneeR, nodes.ankleR);
-    case "hip": return angleBetween(nodes.chest, nodes.thighL, nodes.kneeL);
-    case "bodyLine": return angleBetween(nodes.chest, nodes.hip, nodes.kneeL);
-    case "backAngle": return angleBetween(nodes.head, nodes.chest, nodes.hip);
-    case "ankle": return angleBetween(nodes.kneeL, nodes.ankleL, nodes.wristL);
-    case "wrist": return angleBetween(nodes.elbowL, nodes.wristL, nodes.hip);
-    default: return 0;
-  }
+// Solve a limb so its end effector sits on `targetWorld`.
+function ikChain(parent, joint, jointChild, targetWorld, l1, l2, bend) {
+  _t.copy(targetWorld);
+  parent.worldToLocal(_t);
+  const s = solveTwoBone(joint.position.y, joint.position.z, _t.y, _t.z, l1, l2, bend);
+  joint.rotation.x = s.rot1;
+  jointChild.rotation.x = s.rot2;
 }
 
 export default function Mannequin3D({ exercise, className = "", frozenT }) {
@@ -376,7 +286,7 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
   const [angles, setAngles] = useState([]);
 
   useEffect(() => {
-    const conf = POSES[exercise.id] || POSES[exercise.detection?.formKey] || POSES.squat;
+    const m = MOTION[exercise.id] || MOTION[exercise.detection?.formKey] || MOTION.squat;
     const rows = ANGLE_ROWS[exercise.id] || ANGLE_ROWS.squat;
     const mount = mountRef.current;
     if (!mount) return;
@@ -386,7 +296,7 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 100);
-    const cam = conf.cam || { target: [0, 0.05, 0], dist: 3.2 };
+    const cam = m.cam;
     camera.position.set(cam.dist * 0.62, cam.target[1] + 0.45, cam.dist * 0.78);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -395,19 +305,17 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);
 
-    // Anatomical model look: cool grey body, warm orange rim from behind.
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: BODY_COLOR, roughness: 0.42, metalness: 0.28,
-      emissive: 0x120a06, emissiveIntensity: 1,
+      color: BODY_COLOR, roughness: 0.42, metalness: 0.28, emissive: 0x120a06,
     });
     const jointMat = new THREE.MeshStandardMaterial({
-      color: ACCENT, emissive: ACCENT, emissiveIntensity: 1.7, roughness: 0.3, metalness: 0,
+      color: ACCENT, emissive: ACCENT, emissiveIntensity: 1.7, roughness: 0.3,
     });
 
     scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x120c08, 0.55));
-    const key = new THREE.DirectionalLight(0xffffff, 1.15);
-    key.position.set(2.4, 3.2, 2.6);
-    scene.add(key);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
+    keyLight.position.set(2.4, 3.2, 2.6);
+    scene.add(keyLight);
     const rimA = new THREE.DirectionalLight(0xff6a1f, 2.1);
     rimA.position.set(-2.6, 1.2, -2.2);
     scene.add(rimA);
@@ -419,9 +327,76 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
     scene.add(fill);
 
     const rig = buildRig(bodyMat, jointMat);
-    scene.add(rig.root);
+    const { root, nodes } = rig;
+    scene.add(root);
     scene.add(buildBackdrop());
-    scene.add(buildStage(conf.anchor === "bar"));
+    scene.add(buildStage(m.kind === "hang"));
+
+    /* ---- establish the contact targets the IK will pin to ---- */
+    const footTarget = { L: new THREE.Vector3(), R: new THREE.Vector3() };
+    const handTarget = { L: new THREE.Vector3(), R: new THREE.Vector3() };
+    const ankleAnchor = { L: new THREE.Vector3(), R: new THREE.Vector3() };
+    let baseY = 0;
+
+    root.position.set(0, 0, 0);
+    root.rotation.set(deg(m.baseRot || 0), 0, 0);
+    restPose(nodes, m);
+    root.updateMatrixWorld(true);
+
+    if (m.kind === "grounded") {
+      // drop the figure so the soles rest on the floor
+      let minY = Infinity;
+      for (const key of ["L", "R"]) {
+        nodes["ankle" + key].getWorldPosition(_v);
+        minY = Math.min(minY, _v.y - 0.075);
+      }
+      baseY = -minY;
+      root.position.y = baseY;
+      root.updateMatrixWorld(true);
+      for (const key of ["L", "R"]) {
+        nodes["ankle" + key].getWorldPosition(footTarget[key]);
+      }
+      if (m.stance) {
+        // split stance: front foot forward, back foot behind and up on the toes
+        footTarget.L.z += m.stance.front;
+        footTarget.R.z += m.stance.back;
+        footTarget.R.y += m.stance.backLift;
+      }
+    } else if (m.kind === "prone") {
+      let minY = Infinity;
+      for (const key of ["L", "R"]) {
+        nodes["wrist" + key].getWorldPosition(_v);
+        minY = Math.min(minY, _v.y - 0.07);
+        nodes["ankle" + key].getWorldPosition(_v);
+        minY = Math.min(minY, _v.y - 0.06);
+      }
+      baseY = -minY;
+      root.position.y = baseY;
+      root.updateMatrixWorld(true);
+      for (const key of ["L", "R"]) {
+        nodes["wrist" + key].getWorldPosition(handTarget[key]);
+        nodes["ankle" + key].getWorldPosition(ankleAnchor[key]);
+        // hands stack under the shoulders
+        nodes["shoulder" + key].getWorldPosition(_v);
+        handTarget[key].z = _v.z;
+        handTarget[key].y = 0.07;
+        if (m.forearmDown) handTarget[key].z = _v.z + 0.24; // forearm plank
+      }
+    } else {
+      // hang: raise the figure until the hands meet the bar
+      for (const key of ["L", "R"]) {
+        nodes["shoulder" + key].rotation.set(deg(-172), 0, 0);
+      }
+      root.updateMatrixWorld(true);
+      nodes.wristL.getWorldPosition(_v);
+      baseY = BAR_Y - _v.y;
+      root.position.y = baseY;
+      root.updateMatrixWorld(true);
+      for (const key of ["L", "R"]) {
+        nodes["wrist" + key].getWorldPosition(handTarget[key]);
+        handTarget[key].y = BAR_Y;
+      }
+    }
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -434,32 +409,123 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
     controls.autoRotateSpeed = 0.9;
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const period = m.period;
     let raf = 0;
     let startTs;
     let lastPush = 0;
-    const period = conf.hold ? 3600 : 2900;
+
+    const poseAt = (p, k) => {
+      // Sample the drive once per joint group, each with its own lag, so the
+      // motion travels outward from the pelvis instead of snapping in lockstep.
+      const at = (lag) => drivenAt(p, lag, period, m);
+      const tHips = at(LAG.hips);
+      const tSpine = at(LAG.spine);
+      const tHead = at(LAG.head);
+      const tShoulder = at(LAG.shoulder);
+      const tElbow = at(LAG.elbow);
+
+      // Secondary motion: the torso compresses a touch when the body decelerates
+      // under load, and drifts back as the weight settles.
+      const inertia = clamp(-k.acceleration * 0.85, -3.2, 3.2);
+      const breath = m.hold ? Math.sin(p * Math.PI * 2 * 2) * 0.9 : 0;
+
+      nodes.spine.rotation.set(deg(lerp(m.spine[0], m.spine[1], tSpine) + inertia + breath), 0, 0);
+      nodes.head.rotation.set(deg(lerp(m.head[0], m.head[1], tHead) - inertia * 0.5), 0, 0);
+
+      if (m.kind === "grounded") {
+        // Pelvis rides an arc: it travels back slightly ahead of travelling down.
+        const tBack = drivenAt(p, LAG.hips - (m.hips.lead || 0), period, m);
+        root.position.y = baseY - m.hips.drop * tHips;
+        root.position.z = -m.hips.back * tBack;
+        root.rotation.set(0, 0, 0);
+
+        // Arms stay FK — they are not load-bearing here.
+        const shoulder = lerp(m.arms.shoulder[0], m.arms.shoulder[1], tShoulder);
+        const elbow = lerp(m.arms.elbow[0], m.arms.elbow[1], tElbow);
+        for (const side of [-1, 1]) {
+          const key = side < 0 ? "L" : "R";
+          nodes["shoulder" + key].rotation.set(deg(-shoulder), 0, deg(6 * -side));
+          nodes["elbow" + key].rotation.set(deg(-elbow), 0, 0);
+        }
+        root.updateMatrixWorld(true);
+
+        // Legs are IK — the feet stay exactly where they were planted.
+        for (const key of ["L", "R"]) {
+          ikChain(nodes.hip, nodes["thigh" + key], nodes["knee" + key], footTarget[key], THIGH, SHANK, m.legBend);
+        }
+        root.updateMatrixWorld(true);
+        for (const key of ["L", "R"]) {
+          const th = nodes["thigh" + key].rotation.x;
+          const kn = nodes["knee" + key].rotation.x;
+          // keep the sole level with the floor (the back foot stays on its toes)
+          nodes["ankle" + key].rotation.x =
+            m.stance && key === "R" ? -(th + kn) + deg(38) : -(th + kn);
+        }
+      } else if (m.kind === "prone") {
+        // The body pivots about the toes, then the arms solve to the planted hands.
+        root.rotation.set(deg(m.baseRot + m.pivot * tHips), 0, 0);
+        root.position.y = baseY;
+        root.position.z = 0;
+        for (const key of ["L", "R"]) {
+          nodes["thigh" + key].rotation.set(0, 0, 0);
+          nodes["knee" + key].rotation.set(deg(2), 0, 0);
+          nodes["ankle" + key].rotation.set(0, 0, 0);
+        }
+        root.updateMatrixWorld(true);
+        // pin the toes: translate the root so the ankle returns to its anchor
+        nodes.ankleL.getWorldPosition(_v);
+        root.position.add(_t.copy(ankleAnchor.L).sub(_v));
+        root.updateMatrixWorld(true);
+        if (m.fkArms) {
+          for (const key of ["L", "R"]) {
+            nodes["shoulder" + key].rotation.set(deg(-m.fkArms.shoulder), 0, deg(8 * (key === "L" ? 1 : -1)));
+            nodes["elbow" + key].rotation.set(deg(-m.fkArms.elbow), 0, 0);
+          }
+        } else {
+          for (const key of ["L", "R"]) {
+            ikChain(nodes.chest, nodes["shoulder" + key], nodes["elbow" + key], handTarget[key], UPPER_ARM, FOREARM, m.armBend);
+          }
+        }
+        root.updateMatrixWorld(true);
+      } else {
+        // hang: the body rises to the bar, arms solve to the fixed grip
+        root.position.y = baseY + m.lift * tHips;
+        root.position.z = 0;
+        root.rotation.set(0, 0, 0);
+        const hip = lerp(m.legs.hip[0], m.legs.hip[1], tSpine);
+        const knee = lerp(m.legs.knee[0], m.legs.knee[1], tElbow);
+        for (const key of ["L", "R"]) {
+          nodes["thigh" + key].rotation.set(deg(-hip), 0, 0);
+          nodes["knee" + key].rotation.set(deg(knee), 0, 0);
+          nodes["ankle" + key].rotation.set(deg(-20), 0, 0);
+        }
+        root.updateMatrixWorld(true);
+        for (const key of ["L", "R"]) {
+          ikChain(nodes.chest, nodes["shoulder" + key], nodes["elbow" + key], handTarget[key], UPPER_ARM, FOREARM, m.armBend);
+        }
+        root.updateMatrixWorld(true);
+      }
+    };
 
     const render = (ts) => {
       raf = requestAnimationFrame(render);
       if (!startTs) startTs = ts;
-      let tt;
-      if (frozenT !== undefined) {
-        tt = frozenT;
-      } else if (reduce) {
-        tt = 0.55;
-      } else {
-        const p = ((ts - startTs) % period) / period;
-        tt = (1 - Math.cos(p * 2 * Math.PI)) / 2;
-        if (conf.hold) tt *= 0.35;
-      }
-      applyPose(rig, conf, tt);
-      anchorFigure(rig, conf);
+      let p;
+      if (frozenT !== undefined) p = frozenT;
+      else if (reduce) p = 0.34;
+      else p = ((ts - startTs) % period) / period;
+
+      const k = frozenT !== undefined || reduce
+        ? { value: repDrive(p, m), velocity: 0, acceleration: 0 }
+        : repDriveKinematics(p, period, m);
+
+      poseAt(p, k);
       controls.update();
       renderer.render(scene, camera);
 
       if (ts - lastPush > 120) {
         lastPush = ts;
-        setAngles(rows.map((r) => ({ key: r, value: measure(rig.nodes, r) })));
+        setAngles(rows.map((r) => ({ key: r, value: measure(nodes, r) })));
       }
     };
 
@@ -503,7 +569,6 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#141210] to-[#080808] ${className}`}>
       <div className="flex h-full w-full">
-        {/* live joint-angle readout, measured off the model */}
         <div className="flex w-[38%] max-w-[9.5rem] shrink-0 flex-col justify-center gap-px border-r border-white/10">
           {angles.map((a) => (
             <div key={a.key} className="px-3 py-1.5">
@@ -519,4 +584,41 @@ export default function Mannequin3D({ exercise, className = "", frozenT }) {
       </div>
     </div>
   );
+}
+
+/* ---------------- live angle measurement ---------------- */
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
+const _u = new THREE.Vector3(), _w = new THREE.Vector3();
+
+function angleBetween(A, B, C) {
+  A.getWorldPosition(_a);
+  B.getWorldPosition(_b);
+  C.getWorldPosition(_c);
+  _u.subVectors(_a, _b).normalize();
+  _w.subVectors(_c, _b).normalize();
+  return Math.round((Math.acos(clamp(_u.dot(_w), -1, 1)) * 180) / Math.PI);
+}
+
+const ANGLE_ROWS = {
+  pushup: ["shoulder", "elbow", "bodyLine", "hip", "wrist"],
+  plank: ["shoulder", "elbow", "bodyLine", "hip", "knee"],
+  squat: ["knee", "hip", "backAngle", "ankle", "shoulder"],
+  "bicep-curl": ["elbow", "shoulder", "backAngle", "wrist", "hip"],
+  "pull-up": ["elbow", "shoulder", "bodyLine", "hip", "knee"],
+  lunge: ["knee", "hip", "backAngle", "backKnee", "shoulder"],
+};
+
+function measure(nodes, key) {
+  switch (key) {
+    case "elbow": return angleBetween(nodes.shoulderL, nodes.elbowL, nodes.wristL);
+    case "shoulder": return angleBetween(nodes.elbowL, nodes.shoulderL, nodes.hip);
+    case "knee": return angleBetween(nodes.thighL, nodes.kneeL, nodes.ankleL);
+    case "backKnee": return angleBetween(nodes.thighR, nodes.kneeR, nodes.ankleR);
+    case "hip": return angleBetween(nodes.chest, nodes.thighL, nodes.kneeL);
+    case "bodyLine": return angleBetween(nodes.chest, nodes.hip, nodes.kneeL);
+    case "backAngle": return angleBetween(nodes.head, nodes.chest, nodes.hip);
+    case "ankle": return angleBetween(nodes.kneeL, nodes.ankleL, nodes.wristL);
+    case "wrist": return angleBetween(nodes.elbowL, nodes.wristL, nodes.hip);
+    default: return 0;
+  }
 }
