@@ -149,7 +149,7 @@ export default function AIAssistantPage() {
           <Reveal>
             <div className="card flex h-full flex-col p-6">
               <SectionLabel icon={<Info className="h-4 w-4" />} step="" text={t("coach.demoTitle")} />
-              <ExerciseDemo exercise={exercise} className="mt-3 aspect-square" />
+              <ExerciseDemo exercise={exercise} className="mt-3 aspect-[4/3]" />
               <h2 className="mt-4 font-display text-xl font-extrabold">{exercise.name[locale]}</h2>
               <p className="mt-1.5 text-[0.9rem] leading-relaxed text-ink-2">{exercise.description[locale]}</p>
 
