@@ -78,7 +78,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   // The hook is deliberately not gated on `running`: stopping the session flips
   // that false in the same tick as the sign-off line, which would cancel it
   // mid-sentence. Each speaking effect below is gated on `running` itself.
-  const { speak, playClip, cancel, reset, supported: voiceSupported, voiceLang } =
+  const { speak, playClip, prime, cancel, reset, supported: voiceSupported, voiceLang } =
     useSpeech({ enabled: voiceOn || hypeOn, locale });
   // The two channels share one engine, so the engine stays enabled while either
   // is on — which means the per-channel mute has to be enforced here, or muting
@@ -88,6 +88,12 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     (text, opts) => (voiceOn ? speak(text, opts) : false),
     [voiceOn, speak]
   );
+
+  // Must run inside the click, not after the camera resolves — see prime().
+  const startSession = () => {
+    prime();
+    pose.start();
+  };
   // Speak in whatever language we have a real voice for. The screen stays in
   // the user's locale; only the spoken wording follows the available voice.
   const say = voiceLang || locale;
@@ -164,10 +170,14 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
           });
       if (ok) fired += 1;
     };
-    // Two beats: once you are warm, once you are starting to hurt.
-    const first = setTimeout(fire, 40000);
-    const second = setTimeout(fire, 110000);
-    return () => { clearTimeout(first); clearTimeout(second); };
+    // Two beats: once you are warm, once you are starting to hurt. Retried on
+    // a slow tick because the first attempt is skipped whenever a correction
+    // happens to be on screen, and a missed beat used to mean silence for the
+    // rest of the session.
+    const at = [18000, 70000];
+    const timers = at.map((ms) => setTimeout(fire, ms));
+    const retry = setInterval(() => { if (fired < at.length) fire(); }, 15000);
+    return () => { timers.forEach(clearTimeout); clearInterval(retry); };
   }, [running, hypeOn, say, speak, playClip]);
 
   // Periodic reinforcement while the form is actually clean.
@@ -220,7 +230,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
               </span>
               <p className="mt-4 text-lg font-bold text-white">{t("coach.cameraIdle")}</p>
               <p className="mx-auto mt-1.5 max-w-xs text-[0.88rem] text-white/60">{t("coach.cameraIdleBody")}</p>
-              <Button size="lg" className="mt-5" onClick={pose.start}>
+              <Button size="lg" className="mt-5" onClick={startSession}>
                 {t("coach.startSession")}
               </Button>
             </div>
@@ -246,7 +256,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
               </span>
               <p className="mt-4 text-lg font-bold text-white">{t("coach.permissionTitle")}</p>
               <p className="mt-1.5 text-[0.88rem] text-white/60">{t("coach.permissionBody")}</p>
-              <Button variant="secondary" size="sm" className="mt-4" onClick={pose.start}>
+              <Button variant="secondary" size="sm" className="mt-4" onClick={startSession}>
                 {t("common.retry")}
               </Button>
             </div>
@@ -386,7 +396,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
       {/* Controls */}
       <div className="mt-4 flex items-center gap-3">
         {!running ? (
-          <Button size="lg" className="flex-1" onClick={pose.start} disabled={status === "loading"} leftIcon={status === "loading" ? null : <Play className="h-5 w-5" />}>
+          <Button size="lg" className="flex-1" onClick={startSession} disabled={status === "loading"} leftIcon={status === "loading" ? null : <Play className="h-5 w-5" />}>
             {status === "loading" ? t("common.loading") : t("coach.startSession")}
           </Button>
         ) : (
@@ -398,6 +408,15 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
           <Camera className="h-4 w-4" /> {t("home.trustLine")}
         </span>
       </div>
+
+      {/* Silence here is otherwise indistinguishable from a broken app: the
+          engine exists but the machine has no installed voice to speak with. */}
+      {voiceSupported && voiceLang === null && (
+        <p className="mt-2.5 flex items-start gap-2 text-[0.8rem] text-warning">
+          <VolumeX className="mt-0.5 h-4 w-4 shrink-0" />
+          {t("coach.noVoiceInstalled")}
+        </p>
+      )}
     </div>
   );
 }

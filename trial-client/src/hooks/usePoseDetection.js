@@ -129,16 +129,31 @@ function kneeCave(lm) {
   return Math.abs(lm[L.lKnee].x - lm[L.rKnee].x) / ankles;
 }
 
-/* Shoulders creeping toward the ears. Scale-free: the nose-to-shoulder gap
-   measured against torso length, so it reads the same at any distance. Lower
-   ratio = more shrug. */
-function shrugRatio(lm) {
-  if (vis(lm, L.nose, L.lShoulder, L.rShoulder, L.lHip, L.rHip) < 0.45) return null;
+/* Shoulders creeping toward the ears, as a multiple of this person's own
+   relaxed posture. Returns e.g. 1.15 for "15% higher than their normal".
+
+   Measured as shoulder-to-hip height over shoulder width, deliberately *not*
+   against the head: dropping the chin lowers the nose, which any nose-relative
+   metric reads as the shoulders rising, so a chin tuck would be reported as a
+   shrug. Shoulder width cannot be moved by the neck. The baseline is learned
+   per session because torso proportions vary far too much between people for a
+   fixed threshold to mean anything. */
+function shrugExcess(lm, s) {
+  if (vis(lm, L.lShoulder, L.rShoulder, L.lHip, L.rHip) < 0.45) return null;
+  const width = Math.abs(lm[L.lShoulder].x - lm[L.rShoulder].x);
+  if (width < 0.05) return null; // turned side-on: width is not measurable
   const shY = (lm[L.lShoulder].y + lm[L.rShoulder].y) / 2;
   const hipY = (lm[L.lHip].y + lm[L.rHip].y) / 2;
-  const torso = hipY - shY;
-  if (torso < 0.05) return null;
-  return (shY - lm[L.nose].y) / torso;
+  const ratio = (hipY - shY) / width;
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  // The baseline only ever tracks *downward*, toward the most relaxed posture
+  // seen this session. Letting it rise at all means a shrug held through a long
+  // set slowly becomes the new normal and the fault stops being reported —
+  // exactly backwards. Easing down rather than snapping keeps one glitched
+  // frame from permanently redefining "relaxed".
+  if (s.shrugBase == null) s.shrugBase = ratio;
+  else if (ratio < s.shrugBase) s.shrugBase = s.shrugBase * 0.98 + ratio * 0.02;
+  return ratio / s.shrugBase;
 }
 
 function headLine(lm) {
@@ -488,6 +503,7 @@ function freshMachine() {
     angle: 0,
     joints: null,
     checks: [],
+    shrugBase: null,
     // Per-rep log + frame tallies. The report grades depth, tempo and
     // consistency, and none of that can be reconstructed from a single
     // end-of-session number.
@@ -514,7 +530,9 @@ function analyzeReps(lm, s, cfg, ctx, canvas, accent, onRep, onFault) {
   const gate = poseGate(lm, cfg.formKey);
   if (!gate.ok) {
     s.tracking = gate.reason === "searching" ? "searching" : "adjust";
-    s.cue = gate.reason === "wrongpose" ? "position" : null;
+    // The movement is not recognised, but the body usually still is — coach the
+    // posture rather than going quiet until a rep finally registers.
+    s.cue = gate.reason === "wrongpose" ? (postureCue(lm, cfg, s) || "position") : postureCue(lm, cfg, s);
     s.reachedFlex = false;
     s.reachedExtend = false;
     s.inFlexFrames = 0;
@@ -545,6 +563,9 @@ function analyzeReps(lm, s, cfg, ctx, canvas, accent, onRep, onFault) {
     angle = angleAt(lm[tripR[0]], lm[tripR[1]], lm[tripR[2]]);
   } else {
     s.tracking = "searching";
+    // Clear the previous cue rather than leaving a stale one on screen, but
+    // still offer posture help if the torso is readable.
+    s.cue = postureCue(lm, cfg, s);
     return;
   }
   if (trip) drawLimb(ctx, canvas, lm, trip, s.stage === "flex" ? "#ff3b6b" : accent);
@@ -616,6 +637,34 @@ function countRep(s, cfg, onRep, onFault, nowTs) {
   onRep?.(s.reps, quality);
 }
 
+/* Posture coaching that needs no rep context.
+   Rep analysis bails out early whenever the movement is not recognised — wrong
+   posture, or a joint the camera cannot see — and used to fall silent exactly
+   when the user is still setting up and most wants to hear something. These
+   checks only read a single frame, so they work during those gaps. */
+export function postureCue(lm, cfg, s) {
+  const key = cfg.formKey;
+
+  if (key === "pushup" || key === "plank") {
+    const dev = hipDeviation(lm);
+    if (dev != null && dev > 0.045) return "hips";
+    if (dev != null && dev < -0.055) return "hipsHigh";
+  }
+
+  const shrug = shrugExcess(lm, s);
+  if (shrug != null && shrug > 1.12) return "shrug";
+
+  const head = headLine(lm);
+  if (head != null && head < 110) return "headNeutral";
+
+  if (key === "curl" || key === "squat" || key === "pullup") {
+    const tilt = torsoTilt(lm);
+    if (tilt != null && tilt > 14) return "chestOut";
+  }
+
+  return null;
+}
+
 /* The spoken coach's vocabulary. Returns the single most useful correction for
    this frame, most severe first — a coach says one thing at a time, and the
    speech layer needs a stable key to rate-limit against. */
@@ -649,8 +698,8 @@ function liveCue(lm, cfg, angle, s) {
     const tilt = torsoTilt(lm);
     if (tilt != null && tilt > 22) return "swing";
     // Traps taking over: shoulders ride up toward the ears as the arm loads.
-    const shrug = shrugRatio(lm);
-    if (shrug != null && shrug < 0.35) return "shrug";
+    const shrug = shrugExcess(lm, s);
+    if (shrug != null && shrug > 1.12) return "shrug";
     // A mild forward lean is the chest collapsing, not yet a full swing.
     if (tilt != null && tilt > 10) return "chestOut";
     if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 15) return "lockout";

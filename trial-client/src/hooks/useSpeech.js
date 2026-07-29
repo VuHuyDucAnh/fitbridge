@@ -62,6 +62,27 @@ export function useSpeech({ enabled, locale }) {
     busyUntil.current = 0;
   }, [supported]);
 
+  /**
+   * Unlock the speech engine from inside a real click.
+   *
+   * Browsers only let speech start in a user gesture, and a session begins
+   * asynchronously — camera permission, then the pose model over the network —
+   * so by the time anything has something to say, the gesture is long gone and
+   * every utterance is silently dropped. Speaking one silent utterance during
+   * the click itself opens the channel for the rest of the session. It also
+   * forces getVoices() to populate, which is empty on first call in Chrome.
+   */
+  const prime = useCallback(() => {
+    if (!supported) return;
+    try {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.resume?.();
+      const u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    } catch { /* ignore */ }
+  }, [supported]);
+
   // Busy = a synthesized line in flight *or* an audio clip playing. Both
   // channels must respect one another or they simply talk over each other.
   const isBusy = useCallback(() => {
@@ -164,5 +185,5 @@ export function useSpeech({ enabled, locale }) {
     busyUntil.current = 0;
   }, []);
 
-  return { speak, playClip, cancel, reset, supported, voiceLang };
+  return { speak, playClip, prime, cancel, reset, supported, voiceLang };
 }
