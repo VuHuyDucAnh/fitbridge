@@ -22,6 +22,24 @@ const TRACK_TEXT = {
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
+/* Ramp an audio element's volume instead of stepping it. Snapping the music
+   down the instant the coach starts talking is audible as a click; over ~180ms
+   it just sounds like the track making room. */
+function rampVolume(el, to, ms = 180) {
+  if (!el) return;
+  clearInterval(el.__ramp);
+  const from = el.volume;
+  if (Math.abs(to - from) < 0.01) { el.volume = to; return; }
+  const steps = Math.max(1, Math.round(ms / 30));
+  let i = 0;
+  el.__ramp = setInterval(() => {
+    i += 1;
+    const v = from + (to - from) * (i / steps);
+    el.volume = clamp(v, 0, 1);
+    if (i >= steps) clearInterval(el.__ramp);
+  }, 30);
+}
+
 const JOINT_ROWS = ["shoulder", "elbow", "bodyLine", "hip", "knee", "ankle"];
 
 /* Posture notes are all individually true at the same time — shoulders up AND
@@ -85,8 +103,18 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   // The hook is deliberately not gated on `running`: stopping the session flips
   // that false in the same tick as the sign-off line, which would cancel it
   // mid-sentence. Each speaking effect below is gated on `running` itself.
+  const trackRef = useRef(null);
+  // The whole point of the second channel: a form correction must never be lost
+  // under the music, so the track steps back while the coach is speaking.
+  const speakingRef = useRef(false);
+  const duck = useCallback((speaking) => {
+    speakingRef.current = speaking;
+    const a = trackRef.current;
+    if (!a || a.paused || !HYPE_TRACK) return;
+    rampVolume(a, speaking ? (HYPE_TRACK.duckedVolume ?? 0.14) : (HYPE_TRACK.volume ?? 0.6));
+  }, []);
   const { speak, prime, cancel, reset, supported: voiceSupported, voiceLang } =
-    useSpeech({ enabled: voiceOn || hypeOn, locale });
+    useSpeech({ enabled: voiceOn || hypeOn, locale, onVoiceActivity: duck });
   // The two channels share one engine, so the engine stays enabled while either
   // is on — which means the per-channel mute has to be enforced here, or muting
   // form coaching would still let form cues through on the motivation channel's
@@ -116,8 +144,6 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     (text, opts) => (armed ? sayCoach(text, opts) : false),
     [armed, sayCoach]
   );
-
-  const trackRef = useRef(null);
 
   // Must run inside the click, not after the camera resolves — see prime().
   const startSession = () => {
@@ -203,7 +229,9 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     const id = setTimeout(() => {
       const a = trackRef.current || (trackRef.current = new Audio());
       a.src = HYPE_TRACK.src;
-      a.volume = HYPE_TRACK.volume ?? 0.55;
+      a.volume = speakingRef.current
+        ? (HYPE_TRACK.duckedVolume ?? 0.14)
+        : (HYPE_TRACK.volume ?? 0.6);
       a.currentTime = 0;
       a.play().catch(() => { /* blocked before any interaction */ });
     }, 5000);
@@ -214,7 +242,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   useEffect(() => {
     if (running && hypeOn) return;
     const a = trackRef.current;
-    if (a) { a.pause(); a.currentTime = 0; }
+    if (a) { clearInterval(a.__ramp); a.pause(); a.currentTime = 0; }
   }, [running, hypeOn]);
 
   // The setup reminder is the first thing you hear, right as coaching arms.

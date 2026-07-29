@@ -16,7 +16,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * its own channel (see lib/hypeTrack), so it plays underneath the coaching
  * instead of competing for this queue.
  */
-export function useSpeech({ enabled, locale }) {
+export function useSpeech({ enabled, locale, onVoiceActivity }) {
+  // Kept in a ref so changing the callback never re-creates speak() and
+  // re-triggers every effect that depends on it.
+  const activityRef = useRef(onVoiceActivity);
+  activityRef.current = onVoiceActivity;
+  const fireActivity = useCallback((speaking) => {
+    try { activityRef.current?.(speaking); } catch { /* never break speech */ }
+  }, []);
+
   const supported = typeof window !== "undefined" && "speechSynthesis" in window;
   // Which language we can actually pronounce: 'vi', 'en', or null for "no
   // voices installed". Callers use it to choose the *wording*, because a
@@ -50,7 +58,10 @@ export function useSpeech({ enabled, locale }) {
     if (supported) {
       try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     }
-  }, [supported]);
+    // cancel() fires no onend, so anything ducking under the voice would stay
+    // ducked forever without this.
+    fireActivity(false);
+  }, [supported, fireActivity]);
 
   /**
    * Unlock the speech engine from inside a real click.
@@ -115,8 +126,12 @@ export function useSpeech({ enabled, locale }) {
         if (voice) {
           try { u.voice = voice; } catch { /* fall back to u.lang */ }
         }
+        u.onstart = () => fireActivity(true);
+        u.onend = () => fireActivity(false);
+        u.onerror = () => fireActivity(false);
         window.speechSynthesis.speak(u);
       } catch {
+        fireActivity(false);
         return false;
       }
 
@@ -125,7 +140,7 @@ export function useSpeech({ enabled, locale }) {
       if (group) lastByGroup.current[group] = now;
       return true;
     },
-    [enabled, supported, locale, gate, cancel]
+    [enabled, supported, locale, gate, cancel, fireActivity]
   );
 
   // Going quiet must stop mid-sentence, not finish the thought.

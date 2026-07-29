@@ -1,17 +1,15 @@
 /* Motivation audio for a live session.
  *
- * Null by design: FitBridge ships no third-party audio. A voice or a recording
- * belongs to whoever made it, and pulling one out of a video also breaks that
- * platform's terms — so there is nothing here until you supply something you
- * have the right to use.
+ * Plays in full, starting 5s into a live session, on its own audio channel —
+ * so it sits underneath the spoken form coaching rather than blocking it.
  *
- * To enable it, drop the file in `public/hype/` and point this at it:
+ *   volume        level while nothing is being spoken
+ *   duckedVolume  level while the coach is mid-sentence, so a form correction
+ *                 is never lost under the music. The stage ramps between the
+ *                 two rather than stepping, which is far less jarring.
  *
- *   export const HYPE_TRACK = { src: "/hype/motivation.mp3", volume: 0.55 };
- *
- * It then plays in full, starting 5s into a live session, on its own audio
- * channel — so it sits underneath the spoken form coaching rather than
- * blocking it. `volume` is what keeps the coach audible over the top; raise it
- * if the track is quiet, lower it if it is drowning the cues.
+ * Set to null to ship no audio at all. Whatever you point this at is served
+ * publicly with the app, so it needs to be something you have the right to
+ * distribute — a track lifted from a video is not.
  */
-export const HYPE_TRACK = null;
+export const HYPE_TRACK = { src: "/hype/motivation.mp3", volume: 0.6, duckedVolume: 0.14 };
