@@ -50,6 +50,15 @@ const CUE_GROUP = {
   hips: "posture", hipsHigh: "posture",
 };
 
+/* Posture notes are paced by reps rather than by the clock — two reps of
+   breathing room between them, so they arrive at the rhythm of the set instead
+   of on a timer that ignores how fast you are moving. The time value is only a
+   fallback: while reps are not registering, "two reps away" never arrives, and
+   that is exactly when someone is still fixing their setup and most wants to
+   hear something. */
+const POSTURE_REP_GAP = 2;
+const POSTURE_STALL_MS = 30000;
+
 function HudPanel({ title, children, className = "" }) {
   return (
     <div className={`rounded-xl border border-accent/25 bg-black/55 px-2.5 py-2 backdrop-blur ${className}`}>
@@ -177,19 +186,33 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   // for the whole set by nature, so repeating them every few seconds nags
   // through the one exercise where you most need to concentrate.
   const sayFaultOnce = exercise.detection.formKey === "curl";
+  const lastPosture = useRef({ rep: -Infinity, at: -Infinity });
   useEffect(() => {
     if (!running || !cue) return;
-    cueSeed.current += 1;
-    const text = cueText(cue, say, cueSeed.current);
-    if (text) {
-      sayLive(text, {
-        key: cue,
-        priority: 2,
-        keyGapMs: sayFaultOnce ? Infinity : 9000,
-        group: CUE_GROUP[cue],
-      });
+
+    const isPosture = CUE_GROUP[cue] === "posture";
+    if (isPosture) {
+      const repsSince = reps - lastPosture.current.rep;
+      const msSince = performance.now() - lastPosture.current.at;
+      if (repsSince < POSTURE_REP_GAP && msSince < POSTURE_STALL_MS) return;
     }
-  }, [cue, running, say, sayLive, sayFaultOnce]);
+
+    // Seed only advances on a line that is actually said, so the phrasings
+    // rotate per utterance rather than per blocked attempt.
+    const text = cueText(cue, say, cueSeed.current + 1);
+    if (!text) return;
+    const said = sayLive(text, {
+      key: cue,
+      priority: 2,
+      keyGapMs: sayFaultOnce ? Infinity : 9000,
+      group: CUE_GROUP[cue],
+      groupGapMs: 4000, // floor only; reps do the real spacing above
+    });
+    if (said) {
+      cueSeed.current += 1;
+      if (isPosture) lastPosture.current = { rep: reps, at: performance.now() };
+    }
+  }, [cue, reps, running, say, sayLive, sayFaultOnce]);
 
   // Rep / hold milestones, so the count reaches you without looking.
   useEffect(() => {
