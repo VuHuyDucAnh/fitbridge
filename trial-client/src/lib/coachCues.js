@@ -110,6 +110,27 @@ export const CUE_LINES = {
   ],
 };
 
+/* One setup reminder per set, spoken a few seconds in. Fault detection can only
+   speak once something has gone wrong; these are the points worth hearing at
+   the top of every set regardless. */
+const SETUP_LINES = {
+  curl: V("Shoulders down, chest out, elbows pinned to your sides",
+          "Đẩy vai xuống, ưỡn ngực ra, ghim khuỷu tay sát thân"),
+  pushup: V("One straight line from head to heels, elbows tucked",
+            "Thân thẳng một đường từ đầu tới gót, khuỷu tay ép sát"),
+  squat: V("Chest up, knees out over your toes, break parallel",
+           "Ngực mở, gối đẩy ra theo mũi chân, hạ qua song song"),
+  pullup: V("Full hang to start, ribs down, chin over the bar",
+            "Treo duỗi thẳng tay, siết sườn, cằm vượt qua xà"),
+  plank: V("Elbows under the shoulders, squeeze your glutes, breathe",
+           "Khuỷu tay ngay dưới vai, siết mông, thở đều"),
+};
+
+export function setupText(formKey, locale) {
+  const v = SETUP_LINES[formKey];
+  return v ? v[locale] || v.en : null;
+}
+
 /* Rep milestones — spoken so you never have to look at the counter. */
 export function repMilestoneText(reps, locale) {
   return locale === "vi" ? `${reps} rep` : `${reps} reps`;

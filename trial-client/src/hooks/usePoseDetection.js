@@ -135,13 +135,17 @@ function kneeCave(lm) {
    Measured as shoulder-to-hip height over shoulder width, deliberately *not*
    against the head: dropping the chin lowers the nose, which any nose-relative
    metric reads as the shoulders rising, so a chin tuck would be reported as a
-   shrug. Shoulder width cannot be moved by the neck. The baseline is learned
+   shrug. Hip width cannot be moved by the neck. The baseline is learned
    per session because torso proportions vary far too much between people for a
    fixed threshold to mean anything. */
 function shrugExcess(lm, s) {
   if (vis(lm, L.lShoulder, L.rShoulder, L.lHip, L.rHip) < 0.45) return null;
-  const width = Math.abs(lm[L.lShoulder].x - lm[L.rShoulder].x);
-  if (width < 0.05) return null; // turned side-on: width is not measurable
+  // Scaled by HIP width, not shoulder width: rolling the shoulders forward
+  // foreshortens them, which a shoulder-scaled metric reads as a shrug — so a
+  // hunch got reported as "shoulders down" instead of "chest out". Hips do not
+  // roll, so they stay a trustworthy ruler.
+  const width = Math.abs(lm[L.lHip].x - lm[L.rHip].x);
+  if (width < 0.03) return null; // turned side-on: width is not measurable
   const shY = (lm[L.lShoulder].y + lm[L.rShoulder].y) / 2;
   const hipY = (lm[L.lHip].y + lm[L.rHip].y) / 2;
   const ratio = (hipY - shY) / width;
@@ -154,6 +158,28 @@ function shrugExcess(lm, s) {
   if (s.shrugBase == null) s.shrugBase = ratio;
   else if (ratio < s.shrugBase) s.shrugBase = s.shrugBase * 0.98 + ratio * 0.02;
   return ratio / s.shrugBase;
+}
+
+/* Chest collapsing / shoulders rolling forward, as a fraction of this person's
+   most open posture. Below 1 means narrower than their best.
+
+   Rounding forward is motion along the camera's depth axis, so from the front —
+   which is how a curl is actually filmed — torso tilt does not move at all and
+   is blind to it. Shoulder width relative to hip width does move: rolled-in
+   shoulders foreshorten. Same learned-baseline trick as the shrug check, since
+   shoulder-to-hip width varies hugely between people. */
+function chestCollapse(lm, s) {
+  if (vis(lm, L.lShoulder, L.rShoulder, L.lHip, L.rHip) < 0.45) return null;
+  const shW = Math.abs(lm[L.lShoulder].x - lm[L.rShoulder].x);
+  const hipW = Math.abs(lm[L.lHip].x - lm[L.rHip].x);
+  if (shW < 0.05 || hipW < 0.03) return null; // side-on: widths are meaningless
+  const ratio = shW / hipW;
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  // Baseline tracks the *widest* chest seen, for the same reason the shrug
+  // baseline only tracks downward: a fault held all set must not become normal.
+  if (s.chestBase == null) s.chestBase = ratio;
+  else if (ratio > s.chestBase) s.chestBase = s.chestBase * 0.98 + ratio * 0.02;
+  return ratio / s.chestBase;
 }
 
 function headLine(lm) {
@@ -504,6 +530,7 @@ function freshMachine() {
     joints: null,
     checks: [],
     shrugBase: null,
+    chestBase: null,
     // Per-rep log + frame tallies. The report grades depth, tempo and
     // consistency, and none of that can be reconstructed from a single
     // end-of-session number.
@@ -658,6 +685,8 @@ export function postureCue(lm, cfg, s) {
   if (head != null && head < 110) return "headNeutral";
 
   if (key === "curl" || key === "squat" || key === "pullup") {
+    const collapse = chestCollapse(lm, s);
+    if (collapse != null && collapse < 0.92) return "chestOut";
     const tilt = torsoTilt(lm);
     if (tilt != null && tilt > 14) return "chestOut";
   }
@@ -701,6 +730,8 @@ function liveCue(lm, cfg, angle, s) {
     const shrug = shrugExcess(lm, s);
     if (shrug != null && shrug > 1.12) return "shrug";
     // A mild forward lean is the chest collapsing, not yet a full swing.
+    const collapse = chestCollapse(lm, s);
+    if (collapse != null && collapse < 0.92) return "chestOut";
     if (tilt != null && tilt > 10) return "chestOut";
     if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 15) return "lockout";
   }

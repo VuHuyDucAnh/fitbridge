@@ -7,9 +7,8 @@ import { usePoseDetection } from "../../hooks/usePoseDetection";
 import { useSpeech } from "../../hooks/useSpeech";
 import { useI18n } from "../../i18n/LanguageContext";
 import { formatDuration } from "../../lib/fitness";
-import { cueText, repMilestoneText, holdMilestoneText, sessionStartText, sessionEndText } from "../../lib/coachCues";
-import { quoteForSeed } from "../../lib/coach";
-import { pickHypeClip } from "../../lib/hypeClips";
+import { cueText, setupText, repMilestoneText, holdMilestoneText, sessionStartText, sessionEndText } from "../../lib/coachCues";
+import { HYPE_TRACK } from "../../lib/hypeTrack";
 
 const TRACK_TEXT = {
   front: { en: "Front view", vi: "Chính diện" },
@@ -78,7 +77,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   // The hook is deliberately not gated on `running`: stopping the session flips
   // that false in the same tick as the sign-off line, which would cancel it
   // mid-sentence. Each speaking effect below is gated on `running` itself.
-  const { speak, playClip, prime, cancel, reset, supported: voiceSupported, voiceLang } =
+  const { speak, prime, cancel, reset, supported: voiceSupported, voiceLang } =
     useSpeech({ enabled: voiceOn || hypeOn, locale });
   // The two channels share one engine, so the engine stays enabled while either
   // is on — which means the per-channel mute has to be enforced here, or muting
@@ -89,9 +88,17 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     [voiceOn, speak]
   );
 
+  const trackRef = useRef(null);
+
   // Must run inside the click, not after the camera resolves — see prime().
   const startSession = () => {
     prime();
+    if (HYPE_TRACK?.src) {
+      const a = trackRef.current || (trackRef.current = new Audio());
+      a.src = HYPE_TRACK.src;
+      a.volume = 0;
+      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+    }
     pose.start();
   };
   // Speak in whatever language we have a real voice for. The screen stays in
@@ -154,31 +161,38 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     return () => clearTimeout(id);
   }, [tracking, running, say, sayCoach]);
 
-  /* Motivation channel — a couple of hard-nosed lines mid-session, delivered
-     in the lower, slower hype voice so it never blurs into the form coach.
-     Routed through the same gate, so it physically cannot talk over a cue. */
+  /* Motivation track — a real audio file on its own channel, so it plays
+     underneath the spoken coaching instead of competing for the speech queue.
+     Starts a few seconds in, once the camera has settled. */
   useEffect(() => {
-    if (!running || !hypeOn) return;
-    let fired = 0;
-    const fire = () => {
-      if (cueRef.current) return; // a correction is on screen: not now
-      const clip = pickHypeClip(fired);
-      const ok = clip
-        ? playClip(clip.src, { key: "hype", priority: 1, keyGapMs: 45000, estimateMs: clip.ms })
-        : speak(quoteForSeed(say, Math.floor(Date.now() / 1000) + fired), {
-            key: "hype", priority: 1, style: "hype", minGapMs: 4000, keyGapMs: 45000,
-          });
-      if (ok) fired += 1;
-    };
-    // Two beats: once you are warm, once you are starting to hurt. Retried on
-    // a slow tick because the first attempt is skipped whenever a correction
-    // happens to be on screen, and a missed beat used to mean silence for the
-    // rest of the session.
-    const at = [18000, 70000];
-    const timers = at.map((ms) => setTimeout(fire, ms));
-    const retry = setInterval(() => { if (fired < at.length) fire(); }, 15000);
-    return () => { timers.forEach(clearTimeout); clearInterval(retry); };
-  }, [running, hypeOn, say, speak, playClip]);
+    if (!running || !hypeOn || !HYPE_TRACK?.src) return;
+    const id = setTimeout(() => {
+      const a = trackRef.current || (trackRef.current = new Audio());
+      a.src = HYPE_TRACK.src;
+      a.volume = HYPE_TRACK.volume ?? 0.55;
+      a.currentTime = 0;
+      a.play().catch(() => { /* blocked before any interaction */ });
+    }, 5000);
+    return () => clearTimeout(id);
+  }, [running, hypeOn]);
+
+  // Ending the session or muting motivation stops the track immediately.
+  useEffect(() => {
+    if (running && hypeOn) return;
+    const a = trackRef.current;
+    if (a) { a.pause(); a.currentTime = 0; }
+  }, [running, hypeOn]);
+
+  // A one-line setup reminder a few seconds in, so the posture cues are heard
+  // at the top of every set rather than only once a fault is detected.
+  useEffect(() => {
+    if (!running) return;
+    const id = setTimeout(() => {
+      const line = setupText(exercise.detection.formKey, say);
+      if (line) sayCoach(line, { key: "setup", priority: 2, keyGapMs: Infinity });
+    }, 4000);
+    return () => clearTimeout(id);
+  }, [running, say, sayCoach, exercise]);
 
   // Periodic reinforcement while the form is actually clean.
   useEffect(() => {
