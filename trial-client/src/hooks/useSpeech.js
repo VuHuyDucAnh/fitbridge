@@ -26,6 +26,7 @@ export function useSpeech({ enabled, locale }) {
   const voiceRef = useRef(null);
   const lastAt = useRef(0);
   const lastByKey = useRef({});
+  const lastByGroup = useRef({});
 
   // Voices load asynchronously in most browsers, and getVoices() is empty on
   // the first call — hence the voiceschanged listener rather than a one-shot.
@@ -77,21 +78,25 @@ export function useSpeech({ enabled, locale }) {
     return window.speechSynthesis.speaking || window.speechSynthesis.pending;
   }, [supported]);
 
-  const gate = useCallback((now, key, priority, minGapMs, keyGapMs) => {
+  const gate = useCallback((now, key, priority, minGapMs, keyGapMs, group, groupGapMs) => {
     // Even a cut-in keeps a small floor, or two cues alternating would chop
     // each other into syllables.
     const floor = priority >= 2 ? 1500 : minGapMs;
     if (now - lastAt.current < floor) return false;
     if (priority < 2 && isBusy()) return false;
     if (key && now - (lastByKey.current[key] ?? -Infinity) < keyGapMs) return false;
+    // A group is a shared cooldown across several distinct cues. Per-cue gaps
+    // alone let related corrections queue up back to back — three different
+    // posture notes in five seconds is nagging, however valid each one is.
+    if (group && now - (lastByGroup.current[group] ?? -Infinity) < groupGapMs) return false;
     return true;
   }, [isBusy]);
 
   const speak = useCallback(
-    (text, { key, priority = 0, minGapMs = 2600, keyGapMs = 9000 } = {}) => {
+    (text, { key, priority = 0, minGapMs = 2600, keyGapMs = 9000, group, groupGapMs = 20000 } = {}) => {
       if (!enabled || !supported || !text) return false;
       const now = performance.now();
-      if (!gate(now, key, priority, minGapMs, keyGapMs)) return false;
+      if (!gate(now, key, priority, minGapMs, keyGapMs, group, groupGapMs)) return false;
 
       const voice = voiceRef.current;
 
@@ -117,6 +122,7 @@ export function useSpeech({ enabled, locale }) {
 
       lastAt.current = now;
       if (key) lastByKey.current[key] = now;
+      if (group) lastByGroup.current[group] = now;
       return true;
     },
     [enabled, supported, locale, gate, cancel]
@@ -132,6 +138,7 @@ export function useSpeech({ enabled, locale }) {
   const reset = useCallback(() => {
     lastAt.current = 0;
     lastByKey.current = {};
+    lastByGroup.current = {};
   }, []);
 
   return { speak, prime, cancel, reset, supported, voiceLang };

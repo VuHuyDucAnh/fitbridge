@@ -140,12 +140,6 @@ export function holdMilestoneText(seconds, locale) {
   return locale === "vi" ? `${seconds} giây` : `${seconds} seconds`;
 }
 
-export function sessionStartText(exerciseName, locale) {
-  return locale === "vi"
-    ? `Bắt đầu ${exerciseName}. Vào tư thế nào.`
-    : `Starting ${exerciseName}. Get into position.`;
-}
-
 export function sessionEndText(reps, isHold, seconds, locale) {
   if (isHold) {
     return locale === "vi"

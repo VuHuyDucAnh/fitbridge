@@ -7,7 +7,7 @@ import { usePoseDetection } from "../../hooks/usePoseDetection";
 import { useSpeech } from "../../hooks/useSpeech";
 import { useI18n } from "../../i18n/LanguageContext";
 import { formatDuration } from "../../lib/fitness";
-import { cueText, setupText, repMilestoneText, holdMilestoneText, sessionStartText, sessionEndText } from "../../lib/coachCues";
+import { cueText, setupText, repMilestoneText, holdMilestoneText, sessionEndText } from "../../lib/coachCues";
 import { HYPE_TRACK } from "../../lib/hypeTrack";
 
 const TRACK_TEXT = {
@@ -23,6 +23,14 @@ const TRACK_TEXT = {
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
 const JOINT_ROWS = ["shoulder", "elbow", "bodyLine", "hip", "knee", "ankle"];
+
+/* Posture notes are all individually true at the same time — shoulders up AND
+   chest closed AND head forward — so per-cue cooldowns alone let them queue up
+   one after another. Sharing a bucket spaces them out. */
+const CUE_GROUP = {
+  shrug: "posture", chestOut: "posture", headNeutral: "posture",
+  hips: "posture", hipsHigh: "posture",
+};
 
 function HudPanel({ title, children, className = "" }) {
   return (
@@ -88,6 +96,27 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     [voiceOn, speak]
   );
 
+  /* Nothing is said for the first few seconds. Starting a session and being
+     talked at immediately gives you no chance to get into position, and the
+     first frames are also the least reliable — the model is still settling and
+     you are still walking into shot. Armed by the first counted rep, or by a
+     short grace period if the reps are not registering. */
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!running) { setArmed(false); return; }
+    const id = setTimeout(() => setArmed(true), 5000);
+    return () => clearTimeout(id);
+  }, [running]);
+  useEffect(() => {
+    if (running && reps >= 1) setArmed(true);
+  }, [running, reps]);
+
+  // Live coaching waits for the arm; the sign-off does not.
+  const sayLive = useCallback(
+    (text, opts) => (armed ? sayCoach(text, opts) : false),
+    [armed, sayCoach]
+  );
+
   const trackRef = useRef(null);
 
   // Must run inside the click, not after the camera resolves — see prime().
@@ -110,13 +139,11 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   const spokenRep = useRef(0);
   const spokenHold = useRef(0);
 
-  // Announce the session so you know it is listening before you get down.
   useEffect(() => {
     if (!running) return;
     reset();
     spokenRep.current = 0;
     spokenHold.current = 0;
-    sayCoach(sessionStartText(exercise.name[locale], say), { priority: 2 });
   }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Corrections take precedence over everything else. On curls each fault is
@@ -128,38 +155,45 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     if (!running || !cue) return;
     cueSeed.current += 1;
     const text = cueText(cue, say, cueSeed.current);
-    if (text) sayCoach(text, { key: cue, priority: 2, keyGapMs: sayFaultOnce ? Infinity : 9000 });
-  }, [cue, running, say, sayCoach, sayFaultOnce]);
+    if (text) {
+      sayLive(text, {
+        key: cue,
+        priority: 2,
+        keyGapMs: sayFaultOnce ? Infinity : 9000,
+        group: CUE_GROUP[cue],
+      });
+    }
+  }, [cue, running, say, sayLive, sayFaultOnce]);
 
   // Rep / hold milestones, so the count reaches you without looking.
   useEffect(() => {
     if (!running || isHold || reps === 0) return;
     if (reps % 5 === 0 && reps !== spokenRep.current) {
       spokenRep.current = reps;
-      sayCoach(repMilestoneText(reps, say), { priority: 1, minGapMs: 1200 });
+      sayLive(repMilestoneText(reps, say), { priority: 1, minGapMs: 1200 });
     }
-  }, [reps, running, isHold, say, sayCoach]);
+  }, [reps, running, isHold, say, sayLive]);
 
   useEffect(() => {
     if (!running || !isHold) return;
     const whole = Math.floor(holdSeconds);
     if (whole > 0 && whole % 15 === 0 && whole !== spokenHold.current) {
       spokenHold.current = whole;
-      sayCoach(holdMilestoneText(whole, say), { priority: 1, minGapMs: 1200 });
+      sayLive(holdMilestoneText(whole, say), { priority: 1, minGapMs: 1200 });
     }
-  }, [holdSeconds, running, isHold, say, sayCoach]);
+  }, [holdSeconds, running, isHold, say, sayLive]);
 
   // Lost the body for a couple of seconds: say so, rather than going quiet and
   // leaving you wondering whether it is still counting.
   useEffect(() => {
     if (!running || tracking !== "searching") return;
     const id = setTimeout(() => {
-      sayCoach(cueText("offFrame", say, Math.floor(Date.now() / 1000)), {
+      sayLive(cueText("offFrame", say, Math.floor(Date.now() / 1000)), {
         key: "offFrame", priority: 1, keyGapMs: 12000,
       });
     }, 2500);
     return () => clearTimeout(id);
-  }, [tracking, running, say, sayCoach]);
+  }, [tracking, running, say, sayLive]);
 
   /* Motivation track — a real audio file on its own channel, so it plays
      underneath the spoken coaching instead of competing for the speech queue.
@@ -183,16 +217,12 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     if (a) { a.pause(); a.currentTime = 0; }
   }, [running, hypeOn]);
 
-  // A one-line setup reminder a few seconds in, so the posture cues are heard
-  // at the top of every set rather than only once a fault is detected.
+  // The setup reminder is the first thing you hear, right as coaching arms.
   useEffect(() => {
-    if (!running) return;
-    const id = setTimeout(() => {
-      const line = setupText(exercise.detection.formKey, say);
-      if (line) sayCoach(line, { key: "setup", priority: 2, keyGapMs: Infinity });
-    }, 4000);
-    return () => clearTimeout(id);
-  }, [running, say, sayCoach, exercise]);
+    if (!running || !armed) return;
+    const line = setupText(exercise.detection.formKey, say);
+    if (line) sayCoach(line, { key: "setup", priority: 2, keyGapMs: Infinity });
+  }, [running, armed, say, sayCoach, exercise]);
 
   // Periodic reinforcement while the form is actually clean.
   useEffect(() => {
@@ -202,12 +232,12 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     const id = setInterval(() => {
       if (cueRef.current) return; // never talk over a correction
       const key = pool[n++ % pool.length];
-      sayCoach(cueText(key, say, Math.floor(Date.now() / 1000)), {
+      sayLive(cueText(key, say, Math.floor(Date.now() / 1000)), {
         key, priority: 0, minGapMs: 6000, keyGapMs: 24000,
       });
     }, 9000);
     return () => clearInterval(id);
-  }, [running, isHold, say, sayCoach]);
+  }, [running, isHold, say, sayLive]);
 
   const end = () => {
     const snap = pose.stop();
