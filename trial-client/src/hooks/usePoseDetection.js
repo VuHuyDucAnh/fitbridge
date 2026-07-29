@@ -312,6 +312,11 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
   // (e.g. 720×1280), so the stage can't assume 16:9 — see setFrameSize below.
   const [frameSize, setFrameSize] = useState(null);
   const frameRef = useRef(0);
+  const [facingMode, setFacingMode] = useState("user");
+  const facingRef = useRef("user");
+  const [switching, setSwitching] = useState(false);
+  const switchingRef = useRef(false);
+  const [cameraCount, setCameraCount] = useState(0);
 
   const pushLive = useCallback(() => {
     const s = m.current;
@@ -400,6 +405,50 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
     [cfg, onRep, onFault, pushLive]
   );
 
+  /* Bringing the camera up is separate from starting a session, because
+     switching lenses mid-set must not reset the rep count — it rebuilds the
+     pipeline while leaving the machine state alone. */
+  const boot = useCallback(async (mode) => {
+    accentRef.current =
+      getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff5a1f";
+
+    await loadMediaPipe();
+
+    const pose = new window.Pose({ locateFile: (f) => `${CDN}/pose/${f}` });
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7,
+    });
+    pose.onResults(onResults);
+    poseRef.current = pose;
+
+    const camera = new window.Camera(videoRef.current, {
+      onFrame: async () => {
+        if (poseRef.current && videoRef.current)
+          await poseRef.current.send({ image: videoRef.current });
+      },
+      width: 1280,
+      height: 720,
+      facingMode: mode,
+    });
+    cameraRef.current = camera;
+    await camera.start();
+  }, [onResults]);
+
+  // Release the stream and the model without touching session state.
+  const teardown = useCallback(() => {
+    try { cameraRef.current?.stop?.(); } catch { /* ignore */ }
+    const stream = videoRef.current?.srcObject;
+    stream?.getTracks?.().forEach((tr) => tr.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    try { poseRef.current?.close?.(); } catch { /* ignore */ }
+    poseRef.current = null;
+    cameraRef.current = null;
+  }, []);
+
   const start = useCallback(async () => {
     setError(null);
     setStatus("loading");
@@ -408,51 +457,45 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
     setLive((v) => ({ ...v, reps: 0, cue: null, quality: null, holdSeconds: 0, elapsed: 0 }));
 
     try {
-      accentRef.current =
-        getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff5a1f";
-
-      await loadMediaPipe();
-
-      const pose = new window.Pose({ locateFile: (f) => `${CDN}/pose/${f}` });
-      pose.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        enableSegmentation: false,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7,
-      });
-      pose.onResults(onResults);
-      poseRef.current = pose;
-
-      const camera = new window.Camera(videoRef.current, {
-        onFrame: async () => {
-          if (poseRef.current && videoRef.current)
-            await poseRef.current.send({ image: videoRef.current });
-        },
-        width: 1280,
-        height: 720,
-      });
-      cameraRef.current = camera;
-      await camera.start();
+      await boot(facingRef.current);
       setStatus("running");
     } catch (err) {
       setStatus("error");
       setError(err?.message || "camera");
     }
-  }, [cfg, onResults]);
+  }, [boot]);
+
+  /** Flip between the selfie and rear lens without ending the set. */
+  const switchCamera = useCallback(async () => {
+    if (switchingRef.current || !cameraRef.current) return;
+    switchingRef.current = true;
+    setSwitching(true);
+    const previous = facingRef.current;
+    const next = previous === "user" ? "environment" : "user";
+    try {
+      teardown();
+      facingRef.current = next;
+      setFacingMode(next);
+      await boot(next);
+    } catch {
+      // No rear lens, or it refused: go back to the one that was working
+      // rather than leaving the session with a dead stream.
+      try {
+        facingRef.current = previous;
+        setFacingMode(previous);
+        await boot(previous);
+      } catch (err2) {
+        setStatus("error");
+        setError(err2?.message || "camera");
+      }
+    } finally {
+      switchingRef.current = false;
+      setSwitching(false);
+    }
+  }, [boot, teardown]);
 
   const stop = useCallback(() => {
-    try {
-      cameraRef.current?.stop?.();
-    } catch { /* ignore */ }
-    const stream = videoRef.current?.srcObject;
-    stream?.getTracks?.().forEach((tr) => tr.stop());
-    if (videoRef.current) videoRef.current.srcObject = null;
-    try {
-      poseRef.current?.close?.();
-    } catch { /* ignore */ }
-    poseRef.current = null;
-    cameraRef.current = null;
+    teardown();
     setStatus("idle");
     pushLive();
     // Return a snapshot of the session for the report.
@@ -464,11 +507,30 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
       elapsed: s.startedAt ? (performance.now() - s.startedAt) / 1000 : 0,
       metrics: summarise(s),
     };
-  }, [pushLive]);
+  }, [pushLive, teardown]);
+
+  /* Only offer the flip when there is something to flip to. Device labels are
+     hidden until permission is granted, so this is re-probed once the stream is
+     live — before that a phone can report a single generic camera. */
+  useEffect(() => {
+    let alive = true;
+    const probe = async () => {
+      try {
+        const devices = await navigator.mediaDevices?.enumerateDevices?.();
+        if (alive && devices) setCameraCount(devices.filter((d) => d.kind === "videoinput").length);
+      } catch { /* enumeration unavailable */ }
+    };
+    probe();
+    navigator.mediaDevices?.addEventListener?.("devicechange", probe);
+    return () => {
+      alive = false;
+      navigator.mediaDevices?.removeEventListener?.("devicechange", probe);
+    };
+  }, [status]);
 
   useEffect(() => () => stop(), []); // cleanup on unmount
 
-  return { videoRef, canvasRef, status, error, frameSize, ...live, start, stop };
+  return { videoRef, canvasRef, status, error, frameSize, facingMode, switching, cameraCount, ...live, start, stop, switchCamera };
 }
 
 function now() {

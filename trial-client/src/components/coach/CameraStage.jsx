@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star, Volume2, VolumeX, Flame } from "lucide-react";
+import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star, Volume2, VolumeX, Flame, SwitchCamera } from "lucide-react";
 import Button from "../ui/Button";
 import StatusChip from "../ui/StatusChip";
 import CoachBubble from "./CoachBubble";
@@ -95,7 +95,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     },
   });
 
-  const { videoRef, canvasRef, status, reps, stage, angle, tracking, cue, holdSeconds, elapsed, frameSize, joints, checks, quality } = pose;
+  const { videoRef, canvasRef, status, reps, stage, angle, tracking, cue, holdSeconds, elapsed, frameSize, joints, checks, quality, facingMode, switching, cameraCount } = pose;
   const running = status === "running";
 
   // Let the stage take the camera's own shape instead of forcing 16:9 — a phone
@@ -343,7 +343,13 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
           width={1280}
           height={720}
           className="h-full w-full object-contain"
-          style={{ transform: "scaleX(-1)", display: running ? "block" : "none" }}
+          // Mirrored for the selfie lens only: a mirror is what makes your own
+          // movement readable, but applying it to the rear camera shows the
+          // world backwards.
+          style={{
+            transform: facingMode === "user" ? "scaleX(-1)" : "none",
+            display: running ? "block" : "none",
+          }}
         />
 
         {/* Idle */}
@@ -425,6 +431,20 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
                   }`}
                 >
                   {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+              )}
+              {cameraCount > 1 && (
+                <button
+                  type="button"
+                  onClick={pose.switchCamera}
+                  disabled={switching}
+                  aria-label={t("coach.flipCamera")}
+                  title={t("coach.flipCamera")}
+                  className="glass grid h-9 w-9 place-items-center rounded-full text-ink transition-colors disabled:opacity-50"
+                >
+                  {switching
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <SwitchCamera className="h-4 w-4" />}
                 </button>
               )}
               {voiceSupported && (
