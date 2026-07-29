@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star, Volume2, VolumeX } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star, Volume2, VolumeX, Flame } from "lucide-react";
 import Button from "../ui/Button";
 import StatusChip from "../ui/StatusChip";
 import CoachBubble from "./CoachBubble";
@@ -8,6 +8,8 @@ import { useSpeech } from "../../hooks/useSpeech";
 import { useI18n } from "../../i18n/LanguageContext";
 import { formatDuration } from "../../lib/fitness";
 import { cueText, repMilestoneText, holdMilestoneText, sessionStartText, sessionEndText } from "../../lib/coachCues";
+import { quoteForSeed } from "../../lib/coach";
+import { pickHypeClip } from "../../lib/hypeClips";
 
 const TRACK_TEXT = {
   front: { en: "Front view", vi: "Chính diện" },
@@ -72,10 +74,20 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   /* ---- spoken coaching ----
      You cannot read a screen mid-set, so every cue is also said out loud. */
   const [voiceOn, setVoiceOn] = useState(true);
-  // Deliberately not gated on `running`: stopping the session flips that false
-  // in the same tick as the sign-off line, which would cancel it mid-sentence.
-  // Every speaking effect below is gated on `running` individually instead.
-  const { speak, cancel, reset, supported: voiceSupported, voiceLang } = useSpeech({ enabled: voiceOn, locale });
+  const [hypeOn, setHypeOn] = useState(true);
+  // The hook is deliberately not gated on `running`: stopping the session flips
+  // that false in the same tick as the sign-off line, which would cancel it
+  // mid-sentence. Each speaking effect below is gated on `running` itself.
+  const { speak, playClip, cancel, reset, supported: voiceSupported, voiceLang } =
+    useSpeech({ enabled: voiceOn || hypeOn, locale });
+  // The two channels share one engine, so the engine stays enabled while either
+  // is on — which means the per-channel mute has to be enforced here, or muting
+  // form coaching would still let form cues through on the motivation channel's
+  // ticket.
+  const sayCoach = useCallback(
+    (text, opts) => (voiceOn ? speak(text, opts) : false),
+    [voiceOn, speak]
+  );
   // Speak in whatever language we have a real voice for. The screen stays in
   // the user's locale; only the spoken wording follows the available voice.
   const say = voiceLang || locale;
@@ -91,46 +103,72 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     reset();
     spokenRep.current = 0;
     spokenHold.current = 0;
-    speak(sessionStartText(exercise.name[locale], say), { priority: 2 });
+    sayCoach(sessionStartText(exercise.name[locale], say), { priority: 2 });
   }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Corrections take precedence over everything else.
+  // Corrections take precedence over everything else. On curls each fault is
+  // called once and then left alone: the elbow-drift and shrug faults persist
+  // for the whole set by nature, so repeating them every few seconds nags
+  // through the one exercise where you most need to concentrate.
+  const sayFaultOnce = exercise.detection.formKey === "curl";
   useEffect(() => {
     if (!running || !cue) return;
     cueSeed.current += 1;
     const text = cueText(cue, say, cueSeed.current);
-    if (text) speak(text, { key: cue, priority: 2, keyGapMs: 9000 });
-  }, [cue, running, say, speak]);
+    if (text) sayCoach(text, { key: cue, priority: 2, keyGapMs: sayFaultOnce ? Infinity : 9000 });
+  }, [cue, running, say, sayCoach, sayFaultOnce]);
 
   // Rep / hold milestones, so the count reaches you without looking.
   useEffect(() => {
     if (!running || isHold || reps === 0) return;
     if (reps % 5 === 0 && reps !== spokenRep.current) {
       spokenRep.current = reps;
-      speak(repMilestoneText(reps, say), { priority: 1, minGapMs: 1200 });
+      sayCoach(repMilestoneText(reps, say), { priority: 1, minGapMs: 1200 });
     }
-  }, [reps, running, isHold, say, speak]);
+  }, [reps, running, isHold, say, sayCoach]);
 
   useEffect(() => {
     if (!running || !isHold) return;
     const whole = Math.floor(holdSeconds);
     if (whole > 0 && whole % 15 === 0 && whole !== spokenHold.current) {
       spokenHold.current = whole;
-      speak(holdMilestoneText(whole, say), { priority: 1, minGapMs: 1200 });
+      sayCoach(holdMilestoneText(whole, say), { priority: 1, minGapMs: 1200 });
     }
-  }, [holdSeconds, running, isHold, say, speak]);
+  }, [holdSeconds, running, isHold, say, sayCoach]);
 
   // Lost the body for a couple of seconds: say so, rather than going quiet and
   // leaving you wondering whether it is still counting.
   useEffect(() => {
     if (!running || tracking !== "searching") return;
     const id = setTimeout(() => {
-      speak(cueText("offFrame", say, Math.floor(Date.now() / 1000)), {
+      sayCoach(cueText("offFrame", say, Math.floor(Date.now() / 1000)), {
         key: "offFrame", priority: 1, keyGapMs: 12000,
       });
     }, 2500);
     return () => clearTimeout(id);
-  }, [tracking, running, say, speak]);
+  }, [tracking, running, say, sayCoach]);
+
+  /* Motivation channel — a couple of hard-nosed lines mid-session, delivered
+     in the lower, slower hype voice so it never blurs into the form coach.
+     Routed through the same gate, so it physically cannot talk over a cue. */
+  useEffect(() => {
+    if (!running || !hypeOn) return;
+    let fired = 0;
+    const fire = () => {
+      if (cueRef.current) return; // a correction is on screen: not now
+      const clip = pickHypeClip(fired);
+      const ok = clip
+        ? playClip(clip.src, { key: "hype", priority: 1, keyGapMs: 45000, estimateMs: clip.ms })
+        : speak(quoteForSeed(say, Math.floor(Date.now() / 1000) + fired), {
+            key: "hype", priority: 1, style: "hype", minGapMs: 4000, keyGapMs: 45000,
+          });
+      if (ok) fired += 1;
+    };
+    // Two beats: once you are warm, once you are starting to hurt.
+    const first = setTimeout(fire, 40000);
+    const second = setTimeout(fire, 110000);
+    return () => { clearTimeout(first); clearTimeout(second); };
+  }, [running, hypeOn, say, speak, playClip]);
 
   // Periodic reinforcement while the form is actually clean.
   useEffect(() => {
@@ -140,17 +178,17 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     const id = setInterval(() => {
       if (cueRef.current) return; // never talk over a correction
       const key = pool[n++ % pool.length];
-      speak(cueText(key, say, Math.floor(Date.now() / 1000)), {
+      sayCoach(cueText(key, say, Math.floor(Date.now() / 1000)), {
         key, priority: 0, minGapMs: 6000, keyGapMs: 24000,
       });
     }, 9000);
     return () => clearInterval(id);
-  }, [running, isHold, say, speak]);
+  }, [running, isHold, say, sayCoach]);
 
   const end = () => {
     const snap = pose.stop();
     cancel();
-    speak(sessionEndText(snap.reps, isHold, Math.round(snap.holdSeconds || 0), say), { priority: 2 });
+    sayCoach(sessionEndText(snap.reps, isHold, Math.round(snap.holdSeconds || 0), say), { priority: 2 });
     onEnd({ ...snap, faults: { ...faults.current } });
     faults.current = { depth: 0, hips: 0, elbows: 0 };
   };
@@ -252,6 +290,20 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
                   }`}
                 >
                   {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+              )}
+              {voiceSupported && (
+                <button
+                  type="button"
+                  onClick={() => setHypeOn((v) => !v)}
+                  aria-pressed={hypeOn}
+                  aria-label={t(hypeOn ? "coach.hypeOn" : "coach.hypeOff")}
+                  title={t(hypeOn ? "coach.hypeOn" : "coach.hypeOff")}
+                  className={`glass grid h-9 w-9 place-items-center rounded-full transition-colors ${
+                    hypeOn ? "text-accent" : "text-ink-3"
+                  }`}
+                >
+                  <Flame className="h-4 w-4" />
                 </button>
               )}
             </div>

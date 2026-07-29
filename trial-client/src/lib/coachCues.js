@@ -67,6 +67,14 @@ export const CUE_LINES = {
     V("Stop swinging, let the arm do the work", "Đừng lắc người, để tay làm việc"),
     V("No body english, keep the torso still", "Không mượn đà, giữ thân yên"),
   ],
+  shrug: [
+    V("Push your shoulders down, away from your ears", "Đẩy vai xuống, tránh xa tai"),
+    V("Drop the shoulders, don't let the traps take over", "Hạ vai xuống, đừng để cơ cầu vai gánh"),
+  ],
+  chestOut: [
+    V("Chest out, open the shoulders", "Ưỡn ngực ra, mở vai"),
+    V("Stand tall, proud chest", "Đứng thẳng người, ngực mở"),
+  ],
 
   /* --- pull-up --- */
   chinOverBar: [

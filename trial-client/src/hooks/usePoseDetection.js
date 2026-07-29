@@ -129,6 +129,18 @@ function kneeCave(lm) {
   return Math.abs(lm[L.lKnee].x - lm[L.rKnee].x) / ankles;
 }
 
+/* Shoulders creeping toward the ears. Scale-free: the nose-to-shoulder gap
+   measured against torso length, so it reads the same at any distance. Lower
+   ratio = more shrug. */
+function shrugRatio(lm) {
+  if (vis(lm, L.nose, L.lShoulder, L.rShoulder, L.lHip, L.rHip) < 0.45) return null;
+  const shY = (lm[L.lShoulder].y + lm[L.rShoulder].y) / 2;
+  const hipY = (lm[L.lHip].y + lm[L.rHip].y) / 2;
+  const torso = hipY - shY;
+  if (torso < 0.05) return null;
+  return (shY - lm[L.nose].y) / torso;
+}
+
 function headLine(lm) {
   if (vis(lm, L.nose) < 0.3) return null;
   const side = bestSide(lm);
@@ -636,6 +648,11 @@ function liveCue(lm, cfg, angle, s) {
     if (Math.abs(lm[L.lElbow].x - lm[L.lShoulder].x) > 0.14) return "elbows";
     const tilt = torsoTilt(lm);
     if (tilt != null && tilt > 22) return "swing";
+    // Traps taking over: shoulders ride up toward the ears as the arm loads.
+    const shrug = shrugRatio(lm);
+    if (shrug != null && shrug < 0.35) return "shrug";
+    // A mild forward lean is the chest collapsing, not yet a full swing.
+    if (tilt != null && tilt > 10) return "chestOut";
     if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 15) return "lockout";
   }
 
