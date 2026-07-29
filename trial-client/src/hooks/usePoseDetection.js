@@ -106,6 +106,29 @@ function elbowFlare(lm) {
   return Math.abs(el.x - sh.x) / w;
 }
 
+/* Signed hip offset from the shoulder->ankle line, in normalized units.
+   Positive = hips below the line (sagging), negative = above it (piking).
+   A plain angle cannot tell those apart — both close it the same way. */
+function hipDeviation(lm) {
+  const side = bestSide(lm);
+  const S = side === "l" ? L.lShoulder : L.rShoulder;
+  const A = side === "l" ? L.lAnkle : L.rAnkle;
+  const H = side === "l" ? L.lHip : L.rHip;
+  if (vis(lm, S, A, H) < 0.45) return null;
+  const dx = lm[A].x - lm[S].x;
+  if (Math.abs(dx) < 0.08) return null; // body pointing at the lens: unstable
+  const t = (lm[H].x - lm[S].x) / dx;
+  return lm[H].y - (lm[S].y + (lm[A].y - lm[S].y) * t);
+}
+
+/* Knee width over ankle width. Below ~0.85 the knees are collapsing inward. */
+function kneeCave(lm) {
+  if (vis(lm, L.lKnee, L.rKnee, L.lAnkle, L.rAnkle) < 0.45) return null;
+  const ankles = Math.abs(lm[L.lAnkle].x - lm[L.rAnkle].x);
+  if (ankles < 0.03) return null;
+  return Math.abs(lm[L.lKnee].x - lm[L.rKnee].x) / ankles;
+}
+
 function headLine(lm) {
   if (vis(lm, L.nose) < 0.3) return null;
   const side = bestSide(lm);
@@ -297,15 +320,16 @@ export function usePoseDetection(exercise, { onRep, onFault } = {}) {
 
       const now = performance.now();
 
+      // Measured first: the cue logic below reads these, so computing them
+      // afterwards would coach against the previous frame.
+      s.joints = measureJoints(lm);
+
       if (cfg.mode === "hold") {
         analyzeHold(lm, s, cfg, now, onFault);
       } else {
         analyzeReps(lm, s, cfg, ctx, canvas, accentRef.current, onRep, onFault);
       }
 
-      // Full joint chain + form checklist for the desktop overlay. Cheap enough
-      // to run per frame; it is only published on the throttled pushLive below.
-      s.joints = measureJoints(lm);
       s.checks = runChecks(lm, cfg, s.joints, s);
 
       // Running tallies the end-of-session report grades against.
@@ -580,19 +604,52 @@ function countRep(s, cfg, onRep, onFault, nowTs) {
   onRep?.(s.reps, quality);
 }
 
+/* The spoken coach's vocabulary. Returns the single most useful correction for
+   this frame, most severe first — a coach says one thing at a time, and the
+   speech layer needs a stable key to rate-limit against. */
 function liveCue(lm, cfg, angle, s) {
-  if (cfg.formKey === "pushup" || cfg.formKey === "plank") {
-    const line = bodyLineAngle(lm);
-    if (line != null && line < 158) return "hips";
+  const key = cfg.formKey;
+
+  if (key === "pushup" || key === "plank") {
+    const dev = hipDeviation(lm);
+    if (dev != null && dev > 0.045) return "hips";
+    if (dev != null && dev < -0.055) return "hipsHigh";
+    const head = headLine(lm);
+    if (head != null && head < 110) return "headNeutral";
+    if (key === "pushup") {
+      if (elbowFlare(lm) > 0.7) return "elbowsFlare";
+      if (s.stage === "flex" && angle > cfg.flex + 22) return "deeper";
+      if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 12) return "lockout";
+    }
   }
-  if (cfg.formKey === "squat" && s.stage === "flex") {
-    if (angle > cfg.flex + 25) return "deeper";
+
+  if (key === "squat") {
+    const cave = kneeCave(lm);
+    if (cave != null && cave < 0.85) return "kneesOut";
+    const tilt = torsoTilt(lm);
+    if (tilt != null && tilt > 48) return "chestUp";
+    if (s.stage === "flex" && angle > cfg.flex + 25) return "deeper";
+    if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 12) return "lockout";
   }
-  if (cfg.formKey === "curl") {
-    // elbow drifting forward from torso → swinging
-    const drift = Math.abs(lm[L.lElbow].x - lm[L.lShoulder].x);
-    if (drift > 0.14) return "elbows";
+
+  if (key === "curl") {
+    if (Math.abs(lm[L.lElbow].x - lm[L.lShoulder].x) > 0.14) return "elbows";
+    const tilt = torsoTilt(lm);
+    if (tilt != null && tilt > 22) return "swing";
+    if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 15) return "lockout";
   }
+
+  if (key === "pullup") {
+    if (s.cycleMin < 180 && s.cycleMin > cfg.flex + 15) return "chinOverBar";
+    if (s.cycleMax > 0 && s.cycleMax < cfg.extend - 15) return "deadHang";
+    const dev = hipDeviation(lm);
+    if (dev != null && Math.abs(dev) > 0.08) return "kip";
+  }
+
+  // Tempo last: it only matters once the movement itself is sound.
+  const recent = s.repLog.slice(-2);
+  if (recent.length === 2 && recent.every((r) => r.gapMs != null && r.gapMs < 1250)) return "slower";
+
   return null;
 }
 
@@ -635,7 +692,8 @@ function analyzeHold(lm, s, cfg, nowTs, onFault) {
     s.qualityCount += 1;
   } else if (line != null) {
     s.tracking = "adjust";
-    s.cue = "hips";
+    // Say *which way* it is off — sag and pike both close the same angle.
+    s.cue = liveCue(lm, cfg, s.angle, s) || "hips";
     s.qualitySum += 0.5;
     s.qualityCount += 1;
     onFault?.("hips");

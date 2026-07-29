@@ -1,18 +1,14 @@
-import { useRef, useState } from "react";
-import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Camera, CameraOff, Play, Square, ShieldAlert, Loader2, Timer, CheckCircle2, AlertTriangle, MinusCircle, Star, Volume2, VolumeX } from "lucide-react";
 import Button from "../ui/Button";
 import StatusChip from "../ui/StatusChip";
 import CoachBubble from "./CoachBubble";
 import { usePoseDetection } from "../../hooks/usePoseDetection";
+import { useSpeech } from "../../hooks/useSpeech";
 import { useI18n } from "../../i18n/LanguageContext";
 import { formatDuration } from "../../lib/fitness";
+import { cueText, repMilestoneText, holdMilestoneText, sessionStartText, sessionEndText } from "../../lib/coachCues";
 
-const CUE_TEXT = {
-  hips: { en: "Keep your hips in line", vi: "Giữ hông thẳng hàng" },
-  deeper: { en: "Go a little deeper", vi: "Hạ sâu hơn một chút" },
-  elbows: { en: "Pin your elbows in", vi: "Ép sát khuỷu tay" },
-  position: { en: "Get into the exercise position", vi: "Vào đúng tư thế bài tập" },
-};
 const TRACK_TEXT = {
   front: { en: "Front view", vi: "Chính diện" },
   left: { en: "Left side", vi: "Bên trái" },
@@ -73,14 +69,94 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     ? { aspectRatio: `${clamp(frameSize.w / frameSize.h, 9 / 16, 16 / 9)}` }
     : undefined;
 
+  /* ---- spoken coaching ----
+     You cannot read a screen mid-set, so every cue is also said out loud. */
+  const [voiceOn, setVoiceOn] = useState(true);
+  // Deliberately not gated on `running`: stopping the session flips that false
+  // in the same tick as the sign-off line, which would cancel it mid-sentence.
+  // Every speaking effect below is gated on `running` individually instead.
+  const { speak, cancel, reset, supported: voiceSupported, voiceLang } = useSpeech({ enabled: voiceOn, locale });
+  // Speak in whatever language we have a real voice for. The screen stays in
+  // the user's locale; only the spoken wording follows the available voice.
+  const say = voiceLang || locale;
+  const cueRef = useRef(null);
+  cueRef.current = cue;
+  const cueSeed = useRef(0);
+  const spokenRep = useRef(0);
+  const spokenHold = useRef(0);
+
+  // Announce the session so you know it is listening before you get down.
+  useEffect(() => {
+    if (!running) return;
+    reset();
+    spokenRep.current = 0;
+    spokenHold.current = 0;
+    speak(sessionStartText(exercise.name[locale], say), { priority: 2 });
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Corrections take precedence over everything else.
+  useEffect(() => {
+    if (!running || !cue) return;
+    cueSeed.current += 1;
+    const text = cueText(cue, say, cueSeed.current);
+    if (text) speak(text, { key: cue, priority: 2, keyGapMs: 9000 });
+  }, [cue, running, say, speak]);
+
+  // Rep / hold milestones, so the count reaches you without looking.
+  useEffect(() => {
+    if (!running || isHold || reps === 0) return;
+    if (reps % 5 === 0 && reps !== spokenRep.current) {
+      spokenRep.current = reps;
+      speak(repMilestoneText(reps, say), { priority: 1, minGapMs: 1200 });
+    }
+  }, [reps, running, isHold, say, speak]);
+
+  useEffect(() => {
+    if (!running || !isHold) return;
+    const whole = Math.floor(holdSeconds);
+    if (whole > 0 && whole % 15 === 0 && whole !== spokenHold.current) {
+      spokenHold.current = whole;
+      speak(holdMilestoneText(whole, say), { priority: 1, minGapMs: 1200 });
+    }
+  }, [holdSeconds, running, isHold, say, speak]);
+
+  // Lost the body for a couple of seconds: say so, rather than going quiet and
+  // leaving you wondering whether it is still counting.
+  useEffect(() => {
+    if (!running || tracking !== "searching") return;
+    const id = setTimeout(() => {
+      speak(cueText("offFrame", say, Math.floor(Date.now() / 1000)), {
+        key: "offFrame", priority: 1, keyGapMs: 12000,
+      });
+    }, 2500);
+    return () => clearTimeout(id);
+  }, [tracking, running, say, speak]);
+
+  // Periodic reinforcement while the form is actually clean.
+  useEffect(() => {
+    if (!running) return;
+    const pool = isHold ? ["holdStrong", "breathe"] : ["good", "good", "breathe"];
+    let n = 0;
+    const id = setInterval(() => {
+      if (cueRef.current) return; // never talk over a correction
+      const key = pool[n++ % pool.length];
+      speak(cueText(key, say, Math.floor(Date.now() / 1000)), {
+        key, priority: 0, minGapMs: 6000, keyGapMs: 24000,
+      });
+    }, 9000);
+    return () => clearInterval(id);
+  }, [running, isHold, say, speak]);
+
   const end = () => {
     const snap = pose.stop();
+    cancel();
+    speak(sessionEndText(snap.reps, isHold, Math.round(snap.holdSeconds || 0), say), { priority: 2 });
     onEnd({ ...snap, faults: { ...faults.current } });
     faults.current = { depth: 0, hips: 0, elbows: 0 };
   };
 
   const trackLabel = (TRACK_TEXT[tracking] || TRACK_TEXT["—"])[locale];
-  const cueLabel = cue ? (CUE_TEXT[cue] || {})[locale] : null;
+  const cueLabel = cue ? cueText(cue, locale, cueSeed.current) : null;
 
   return (
     <div>
@@ -164,6 +240,20 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
             <div className="absolute right-4 top-4 flex flex-col items-end gap-2">
               <StatusChip status={tracking === "searching" ? "partial" : "active"} label={trackLabel} pulse />
               <span className="glass rounded-full px-3 py-1 font-mono text-[0.78rem] font-semibold text-ink">{Math.round(angle)}°</span>
+              {voiceSupported && (
+                <button
+                  type="button"
+                  onClick={() => setVoiceOn((v) => !v)}
+                  aria-pressed={voiceOn}
+                  aria-label={t(voiceOn ? "coach.voiceOn" : "coach.voiceOff")}
+                  title={t(voiceOn ? "coach.voiceOn" : "coach.voiceOff")}
+                  className={`glass grid h-9 w-9 place-items-center rounded-full transition-colors ${
+                    voiceOn ? "text-accent" : "text-ink-3"
+                  }`}
+                >
+                  {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+              )}
             </div>
 
             {/* Live form verdict: amber cue when off, green "good form" otherwise */}
