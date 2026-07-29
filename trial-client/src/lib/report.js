@@ -6,7 +6,11 @@ import { quoteForSeed } from "./coach";
    one number, because "how good was that set" is not one question. The bands
    are deliberately demanding: clearing the rep-counting thresholds is what
    makes a rep *count*, not what makes it *good*, so a set that merely counts
-   lands in the 50s and 80+ requires genuinely textbook execution. */
+   scores in the 50s on the raw rubric.
+
+   The headline the user sees is that raw score put through calibrate() below,
+   which compresses it toward the 6-7 band. The per-dimension breakdown is left
+   uncompressed. */
 
 const L = (en, vi) => ({ en, vi });
 const pick = (o, locale) => (o ? o[locale] || o.en : "");
@@ -234,6 +238,21 @@ function scoreHold(metrics, faults, holdSeconds) {
    dimension's score outright, and a clean-but-unmeasured set reads as 100%. */
 const NEUTRAL_PRIOR = 55;
 
+/* Headline calibration.
+   The raw rubric spans the full 0-100 range, but the headline number is a
+   coaching signal rather than an exam mark, and a set that counted should read
+   as "solid, with room to work" rather than as a pass/fail. This compresses the
+   raw weighted score toward the 6-7 band: a normal set lands about 6.5, a
+   genuinely sharp one reaches the high 7s, and a scrappy one still visibly
+   drops without bottoming out.
+
+   Deliberately applied to the headline ONLY. The per-dimension breakdown keeps
+   its raw numbers, so the detail underneath stays honest and still shows
+   exactly which dimension is weak — compressing that too would flatten the very
+   signal the breakdown exists to give. */
+const CAL_RAW_CENTRE = 60, CAL_OUT_CENTRE = 65, CAL_SPREAD = 0.38;
+const calibrate = (raw) => clamp(CAL_OUT_CENTRE + (raw - CAL_RAW_CENTRE) * CAL_SPREAD, 30, 92);
+
 function total(dims) {
   const measured = dims.reduce((a, d) => a + d.weight, 0);
   if (!measured) return NEUTRAL_PRIOR;
@@ -288,7 +307,7 @@ export function buildReport({ exercise, snap, profile, locale }) {
 
   const dims = isHold ? scoreHold(metrics, faults, holdSeconds) : scoreReps(cfg, metrics, faults, reps);
   const overall = total(dims);
-  const formScore = +(overall / 10).toFixed(1);
+  const formScore = +(calibrate(overall) / 10).toFixed(1);
 
   const breakdown = dims.map((d) => ({ key: d.key, label: pick(DIM_LABEL[d.key], locale), score: d.score }));
 

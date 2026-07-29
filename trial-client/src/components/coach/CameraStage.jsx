@@ -8,7 +8,7 @@ import { useSpeech } from "../../hooks/useSpeech";
 import { useI18n } from "../../i18n/LanguageContext";
 import { formatDuration } from "../../lib/fitness";
 import { cueText, setupText, repMilestoneText, holdMilestoneText, sessionEndText } from "../../lib/coachCues";
-import { HYPE_TRACK } from "../../lib/hypeTrack";
+import { HYPE_TRACKS, FIRST_TRACK_DELAY_MS, TRACK_REP_GAP, TRACK_STALL_MS } from "../../lib/hypeTrack";
 
 const TRACK_TEXT = {
   front: { en: "Front view", vi: "Chính diện" },
@@ -116,11 +116,13 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   // The whole point of the second channel: a form correction must never be lost
   // under the music, so the track steps back while the coach is speaking.
   const speakingRef = useRef(false);
+  const nowTrack = useRef(null);
   const duck = useCallback((speaking) => {
     speakingRef.current = speaking;
     const a = trackRef.current;
-    if (!a || a.paused || !HYPE_TRACK) return;
-    rampVolume(a, speaking ? (HYPE_TRACK.duckedVolume ?? 0.14) : (HYPE_TRACK.volume ?? 0.6));
+    const t = nowTrack.current;
+    if (!a || a.paused || !t) return;
+    rampVolume(a, speaking ? (t.duckedVolume ?? 0.14) : (t.volume ?? 0.6));
   }, []);
   const { speak, prime, cancel, reset, supported: voiceSupported, voiceLang } =
     useSpeech({ enabled: voiceOn || hypeOn, locale, onVoiceActivity: duck });
@@ -157,9 +159,9 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   // Must run inside the click, not after the camera resolves — see prime().
   const startSession = () => {
     prime();
-    if (HYPE_TRACK?.src) {
+    if (HYPE_TRACKS.length) {
       const a = trackRef.current || (trackRef.current = new Audio());
-      a.src = HYPE_TRACK.src;
+      a.src = HYPE_TRACKS[0].src;
       a.volume = 0;
       a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
     }
@@ -170,6 +172,8 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
   const say = voiceLang || locale;
   const cueRef = useRef(null);
   cueRef.current = cue;
+  const repsRef = useRef(0);
+  repsRef.current = reps;
   const cueSeed = useRef(0);
   const spokenRep = useRef(0);
   const spokenHold = useRef(0);
@@ -244,21 +248,46 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     return () => clearTimeout(id);
   }, [tracking, running, say, sayLive]);
 
-  /* Motivation track — a real audio file on its own channel, so it plays
+  /* Motivation queue — real audio files on their own channel, so they play
      underneath the spoken coaching instead of competing for the speech queue.
-     Starts a few seconds in, once the camera has settled. */
+     The first starts once the camera has settled; each one after waits for the
+     previous to finish AND for a few reps, so they never stack. The stall
+     timeout matters because "a few reps from now" never arrives if reps are
+     not registering, which would leave the rest of the queue unplayed. */
   useEffect(() => {
-    if (!running || !hypeOn || !HYPE_TRACK?.src) return;
-    const id = setTimeout(() => {
-      const a = trackRef.current || (trackRef.current = new Audio());
-      a.src = HYPE_TRACK.src;
-      a.volume = speakingRef.current
-        ? (HYPE_TRACK.duckedVolume ?? 0.14)
-        : (HYPE_TRACK.volume ?? 0.6);
+    if (!running || !hypeOn || !HYPE_TRACKS.length) return;
+    const a = trackRef.current || (trackRef.current = new Audio());
+    let index = -1;
+    let armed = null; // { rep, at } captured when the previous track ended
+
+    const play = (i) => {
+      const t = HYPE_TRACKS[i];
+      if (!t) return;
+      index = i;
+      nowTrack.current = t;
+      armed = null;
+      a.src = t.src;
+      // Start already ducked if a correction happens to be in flight.
+      a.volume = speakingRef.current ? (t.duckedVolume ?? 0.14) : (t.volume ?? 0.6);
       a.currentTime = 0;
       a.play().catch(() => { /* blocked before any interaction */ });
-    }, 5000);
-    return () => clearTimeout(id);
+    };
+
+    a.onended = () => { armed = { rep: repsRef.current, at: performance.now() }; };
+
+    const first = setTimeout(() => play(0), FIRST_TRACK_DELAY_MS);
+    const tick = setInterval(() => {
+      if (!armed || index + 1 >= HYPE_TRACKS.length) return;
+      const repsSince = repsRef.current - armed.rep;
+      const msSince = performance.now() - armed.at;
+      if (repsSince >= TRACK_REP_GAP || msSince >= TRACK_STALL_MS) play(index + 1);
+    }, 1000);
+
+    return () => {
+      clearTimeout(first);
+      clearInterval(tick);
+      a.onended = null;
+    };
   }, [running, hypeOn]);
 
   // Ending the session or muting motivation stops the track immediately.
@@ -266,6 +295,7 @@ export default function CameraStage({ exercise, beastMode, onEnd }) {
     if (running && hypeOn) return;
     const a = trackRef.current;
     if (a) { clearInterval(a.__ramp); a.pause(); a.currentTime = 0; }
+    nowTrack.current = null;
   }, [running, hypeOn]);
 
   // The setup reminder is the first thing you hear, right as coaching arms.
